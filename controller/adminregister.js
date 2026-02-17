@@ -21,36 +21,30 @@ const registerAdmin = async (req, res) => {
       username,
       email,
       password: hashedPassword,
-      role: "admin", 
-      createdBy: null,
-      createdByName: null,
+      role: "admin",
     });
 
     await newUser.save();
 
     const token = jwt.sign(
-      { userId: newUser._id, role: newUser.role },
+      { userId: newUser._id, email: newUser.email, role: newUser.role },
       process.env.JWT_SECRET,
       { expiresIn: "7d" }
     );
 
-    res.status(201).json({
+    return res.status(201).json({
       message: "Admin registered successfully",
       token,
-     
       user: {
         id: newUser._id,
         username: newUser.username,
         email: newUser.email,
-         role: "admin",   
+        role: newUser.role,
       },
     });
-
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    return res.status(500).json({ message: error.message });
   }
 };
 
 module.exports = { registerAdmin };
-
-

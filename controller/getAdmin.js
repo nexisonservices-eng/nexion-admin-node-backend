@@ -1,26 +1,26 @@
-// controller/getAdmin.js
 const User = require("../model/loginmodel");
 
 const getAdmins = async (req, res) => {
-    try {
-        const users = await User.find({ role: "admin" });
+  try {
+    const users = await User.find({ role: "admin" }).select(
+      "username email role twilioid whatsappid whatsapptoken whatsappbussiness"
+    );
 
-        const formattedUsers = users.map((u) => ({
-            _id: u._id,
-            username: u.username,
-            email: u.email,
+    const formattedUsers = users.map((u) => ({
+      _id: u._id,
+      username: u.username,
+      email: u.email,
+      role: u.role,
+      twilioId: u.twilioid || "",
+      whatsappId: u.whatsappid || "",
+      whatsappToken: u.whatsapptoken || "",
+      whatsappBusiness: u.whatsappbussiness || "",
+    }));
 
-            // ✅ normalize field names for frontend
-            twilioId: u.twilioid || "",
-            whatsappId: u.whatsappid || "",
-            whatsappToken: u.whatsapptoken || "",
-            whatsappBusiness: u.whatsappbussiness || "",
-        }));
-
-        res.status(200).json({ users: formattedUsers });
-    } catch (err) {
-        res.status(500).json({ message: "Failed to fetch admins" });
-    }
+    return res.status(200).json({ users: formattedUsers });
+  } catch (err) {
+    return res.status(500).json({ message: "Failed to fetch admins", error: err.message });
+  }
 };
 
 module.exports = getAdmins;

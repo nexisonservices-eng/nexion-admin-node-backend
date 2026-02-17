@@ -1,5 +1,8 @@
 const jwt = require("jsonwebtoken");
-const User = require("../model/loginmodel");
+
+// Temporary hardcoded JWT secret for testing
+// In production, this should be properly configured via environment variables
+const JWT_SECRET = process.env.JWT_SECRET || 'technova_jwt_secret_key_2024';
 
 const protect = async (req, res, next) => {
   let token;
@@ -11,13 +14,19 @@ const protect = async (req, res, next) => {
       token = req.headers.authorization.split(" ")[1];
 
       // Decode token
-      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      const decoded = jwt.verify(token, JWT_SECRET);
 
       // Attach user to request
       req.user = {
-        id: decoded.userId,
-        username: decoded.username,
+        id: decoded.userId || decoded.id,
+        username: decoded.username || null,
+        email: decoded.email || null,
+        role: decoded.role || null
       };
+
+      if (!req.user.id) {
+        return res.status(401).json({ message: "Invalid token payload" });
+      }
 
       next();
     } else {

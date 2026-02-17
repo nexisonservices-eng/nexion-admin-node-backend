@@ -1,5 +1,9 @@
 const jwt = require("jsonwebtoken");
 
+// Temporary hardcoded JWT secret for testing
+// In production, this should be properly configured via environment variables
+const JWT_SECRET = process.env.JWT_SECRET || 'technova_jwt_secret_key_2024';
+
 const auth = (req, res, next) => {
   try {
     // 1️⃣ Get token from header
@@ -15,7 +19,7 @@ const auth = (req, res, next) => {
     }
 
     // 2️⃣ Verify JWT
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const decoded = jwt.verify(token, JWT_SECRET);
     // decoded = { userId, email, role }
 
     // 3️⃣ Save user info in request
@@ -27,4 +31,11 @@ const auth = (req, res, next) => {
   }
 };
 
-module.exports = auth;
+const requireSuperAdmin = (req, res, next) => {
+  if (!req.user || req.user.role !== "superadmin") {
+    return res.status(403).json({ message: "Access denied. Superadmin only." });
+  }
+  next();
+};
+
+module.exports = { auth, requireSuperAdmin };

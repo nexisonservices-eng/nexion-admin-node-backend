@@ -37,6 +37,10 @@ const loginuser = async (req, res) => {
           username: "Super Admin",
           email,
           role: "superadmin",
+          twilioId: "",
+          whatsappId: "",
+          whatsappToken: "",
+          whatsappBusiness: "",
         },
       });
     }
@@ -81,6 +85,10 @@ const loginuser = async (req, res) => {
         username: user.username,
         email: user.email,
         role: user.role,
+        twilioId: user.twilioid || "",
+        whatsappId: user.whatsappid || "",
+        whatsappToken: user.whatsapptoken || "",
+        whatsappBusiness: user.whatsappbussiness || "",
       },
     });
 
