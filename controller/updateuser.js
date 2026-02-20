@@ -31,6 +31,14 @@ const updateUser = async (req, res) => {
       typeof twilioData.whatsappBusiness !== "undefined"
         ? twilioData.whatsappBusiness
         : req.body.whatsappBusiness;
+    const normalizedPhoneNumber =
+      typeof twilioData.phoneNumber !== "undefined"
+        ? twilioData.phoneNumber
+        : req.body.phoneNumber;
+    const normalizedMissedCallWebhook =
+      typeof twilioData.missedCallWebhook !== "undefined"
+        ? twilioData.missedCallWebhook
+        : req.body.missedCallWebhook;
 
     if (typeof normalizedTwilioId !== "undefined") {
       updateData.twilioid = String(normalizedTwilioId).trim();
@@ -43,6 +51,12 @@ const updateUser = async (req, res) => {
     }
     if (typeof normalizedWhatsappBusiness !== "undefined") {
       updateData.whatsappbussiness = String(normalizedWhatsappBusiness).trim();
+    }
+    if (typeof normalizedPhoneNumber !== "undefined") {
+      updateData.phonenumber = String(normalizedPhoneNumber).trim();
+    }
+    if (typeof normalizedMissedCallWebhook !== "undefined") {
+      updateData.missedcallwebhook = String(normalizedMissedCallWebhook).trim();
     }
 
     const updatedUser = await User.findByIdAndUpdate(userId, { $set: updateData }, { new: true });
@@ -58,6 +72,8 @@ const updateUser = async (req, res) => {
         whatsappId: updatedUser.whatsappid || "",
         whatsappToken: updatedUser.whatsapptoken || "",
         whatsappBusiness: updatedUser.whatsappbussiness || "",
+        phoneNumber: updatedUser.phonenumber || "",
+        missedCallWebhook: updatedUser.missedcallwebhook || "",
       },
     });
   } catch (error) {

@@ -15,6 +15,9 @@ const { superAdminLogin } = require("../controller/superadmin");
 const getAdmins = require("../controller/getAdmin");
 const getUserCredentials = require("../controller/usercredentials");
 const getUserByWhatsAppId = getUserCredentials.getUserByWhatsAppId;
+const getUserByPhoneNumber = getUserCredentials.getUserByPhoneNumber;
+const getUserCredentialsByUserId = getUserCredentials.getUserCredentialsByUserId;
+const updateUserCredentialsByUserId = getUserCredentials.updateUserCredentialsByUserId;
 
 const router = express.Router();
 
@@ -37,6 +40,9 @@ router.post("/superadmin/login", superAdminLogin);
 
 router.get("/api/user/credentials", protect, getUserCredentials);
 router.get("/internal/user/by-whatsapp-id/:whatsappId", requireInternalApiKey, getUserByWhatsAppId);
+router.get("/internal/user/by-phone-number/:phoneNumber", requireInternalApiKey, getUserByPhoneNumber);
+router.get("/internal/user/credentials/:userId", requireInternalApiKey, getUserCredentialsByUserId);
+router.put("/internal/user/credentials/:userId", requireInternalApiKey, updateUserCredentialsByUserId);
 
 router.post("/api/nexion/register", register.registeruser);
 router.post("/api/forgotpassword", forgotPassword);
@@ -51,3 +57,4 @@ router.post("/api/nexionadmin/admindata", protect, requireSuperAdmin, admindata)
 router.post("/api/nexion/logout", authMiddleware, logout);
 
 module.exports = router;
+

@@ -41,6 +41,8 @@ const loginuser = async (req, res) => {
           whatsappId: "",
           whatsappToken: "",
           whatsappBusiness: "",
+          phoneNumber: "",
+          missedCallWebhook: "",
         },
       });
     }
@@ -89,6 +91,8 @@ const loginuser = async (req, res) => {
         whatsappId: user.whatsappid || "",
         whatsappToken: user.whatsapptoken || "",
         whatsappBusiness: user.whatsappbussiness || "",
+        phoneNumber: user.phonenumber || "",
+        missedCallWebhook: user.missedcallwebhook || "",
       },
     });
 
