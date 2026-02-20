@@ -40,6 +40,23 @@ const UserSchema = new mongoose.Schema(
       type: Number,
       default: 5
     },
+    missedcallautomationmode: {
+      type: String,
+      enum: ["immediate", "nightly_batch"],
+      default: "immediate"
+    },
+    missedcallnighthour: {
+      type: Number,
+      default: 21
+    },
+    missedcallnightminute: {
+      type: Number,
+      default: 0
+    },
+    missedcalltimezone: {
+      type: String,
+      default: "Asia/Kolkata"
+    },
     missedcalltemplatename: {
       type: String,
       default: ""

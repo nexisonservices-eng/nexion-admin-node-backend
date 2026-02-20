@@ -51,6 +51,10 @@ const getUserCredentials = async (req, res) => {
           Number.isFinite(Number(user.missedcalldelayminutes))
             ? Number(user.missedcalldelayminutes)
             : 5,
+        missedCallAutomationMode: normalizeAutomationMode(user.missedcallautomationmode),
+        missedCallNightHour: normalizeNightHour(user.missedcallnighthour),
+        missedCallNightMinute: normalizeNightMinute(user.missedcallnightminute),
+        missedCallTimezone: normalizeTimezone(user.missedcalltimezone),
         missedCallTemplateName: user.missedcalltemplatename || "",
         missedCallTemplateLanguage: user.missedcalltemplatelanguage || "en_US",
         missedCallTemplateVariables: normalizeTemplateVariables(user.missedcalltemplatevariables),
@@ -93,6 +97,19 @@ const getUserByWhatsAppId = async (req, res) => {
 };
 
 const normalizePhone = (value) => String(value || '').replace(/\D/g, '').trim();
+const normalizeAutomationMode = (value) => {
+  const mode = String(value || '').trim().toLowerCase();
+  return mode === 'nightly_batch' ? 'nightly_batch' : 'immediate';
+};
+const normalizeNightHour = (value) => {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed >= 0 && parsed <= 23 ? parsed : 21;
+};
+const normalizeNightMinute = (value) => {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed >= 0 && parsed <= 59 ? parsed : 0;
+};
+const normalizeTimezone = (value) => String(value || '').trim() || 'Asia/Kolkata';
 const normalizeTemplateVariables = (value) => {
   if (!Array.isArray(value)) return [];
   return value
@@ -203,6 +220,26 @@ const updateUserCredentialsByUserId = async (req, res) => {
       }
       setData.missedcalldelayminutes = delay;
     }
+    if (Object.prototype.hasOwnProperty.call(payload, 'missedCallAutomationMode')) {
+      setData.missedcallautomationmode = normalizeAutomationMode(payload.missedCallAutomationMode);
+    }
+    if (Object.prototype.hasOwnProperty.call(payload, 'missedCallNightHour')) {
+      const hour = Number(payload.missedCallNightHour);
+      if (!Number.isInteger(hour) || hour < 0 || hour > 23) {
+        return res.status(400).json({ message: "missedCallNightHour must be an integer between 0 and 23" });
+      }
+      setData.missedcallnighthour = hour;
+    }
+    if (Object.prototype.hasOwnProperty.call(payload, 'missedCallNightMinute')) {
+      const minute = Number(payload.missedCallNightMinute);
+      if (!Number.isInteger(minute) || minute < 0 || minute > 59) {
+        return res.status(400).json({ message: "missedCallNightMinute must be an integer between 0 and 59" });
+      }
+      setData.missedcallnightminute = minute;
+    }
+    if (Object.prototype.hasOwnProperty.call(payload, 'missedCallTimezone')) {
+      setData.missedcalltimezone = normalizeTimezone(payload.missedCallTimezone);
+    }
     if (Object.prototype.hasOwnProperty.call(payload, 'missedCallTemplateName')) {
       setData.missedcalltemplatename = String(payload.missedCallTemplateName || '').trim();
     }
@@ -236,6 +273,10 @@ const updateUserCredentialsByUserId = async (req, res) => {
           Number.isFinite(Number(user.missedcalldelayminutes))
             ? Number(user.missedcalldelayminutes)
             : 5,
+        missedCallAutomationMode: normalizeAutomationMode(user.missedcallautomationmode),
+        missedCallNightHour: normalizeNightHour(user.missedcallnighthour),
+        missedCallNightMinute: normalizeNightMinute(user.missedcallnightminute),
+        missedCallTimezone: normalizeTimezone(user.missedcalltimezone),
         missedCallTemplateName: user.missedcalltemplatename || "",
         missedCallTemplateLanguage: user.missedcalltemplatelanguage || "en_US",
         missedCallTemplateVariables: normalizeTemplateVariables(user.missedcalltemplatevariables),
@@ -280,6 +321,10 @@ const getUserCredentialsByUserId = async (req, res) => {
           Number.isFinite(Number(user.missedcalldelayminutes))
             ? Number(user.missedcalldelayminutes)
             : 5,
+        missedCallAutomationMode: normalizeAutomationMode(user.missedcallautomationmode),
+        missedCallNightHour: normalizeNightHour(user.missedcallnighthour),
+        missedCallNightMinute: normalizeNightMinute(user.missedcallnightminute),
+        missedCallTimezone: normalizeTimezone(user.missedcalltimezone),
         missedCallTemplateName: user.missedcalltemplatename || "",
         missedCallTemplateLanguage: user.missedcalltemplatelanguage || "en_US",
         missedCallTemplateVariables: normalizeTemplateVariables(user.missedcalltemplatevariables),
