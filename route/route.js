@@ -18,6 +18,8 @@ const getUserByWhatsAppId = getUserCredentials.getUserByWhatsAppId;
 const getUserByPhoneNumber = getUserCredentials.getUserByPhoneNumber;
 const getUserCredentialsByUserId = getUserCredentials.getUserCredentialsByUserId;
 const updateUserCredentialsByUserId = getUserCredentials.updateUserCredentialsByUserId;
+const getTwilioCredentialsByUserId = getUserCredentials.getTwilioCredentialsByUserId;
+const getTwilioCredentialsByPhoneNumber = getUserCredentials.getTwilioCredentialsByPhoneNumber;
 
 const router = express.Router();
 
@@ -43,6 +45,8 @@ router.get("/internal/user/by-whatsapp-id/:whatsappId", requireInternalApiKey, g
 router.get("/internal/user/by-phone-number/:phoneNumber", requireInternalApiKey, getUserByPhoneNumber);
 router.get("/internal/user/credentials/:userId", requireInternalApiKey, getUserCredentialsByUserId);
 router.put("/internal/user/credentials/:userId", requireInternalApiKey, updateUserCredentialsByUserId);
+router.get("/internal/twilio/credentials/by-user-id/:userId", requireInternalApiKey, getTwilioCredentialsByUserId);
+router.get("/internal/twilio/credentials/by-phone-number/:phoneNumber", requireInternalApiKey, getTwilioCredentialsByPhoneNumber);
 
 router.post("/api/nexion/register", register.registeruser);
 router.post("/api/forgotpassword", forgotPassword);

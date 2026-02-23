@@ -1,12 +1,13 @@
 const jwt = require("jsonwebtoken");
 
-// Temporary hardcoded JWT secret for testing
-// In production, this should be properly configured via environment variables
-const JWT_SECRET = process.env.JWT_SECRET || 'technova_jwt_secret_key_2024';
+const JWT_SECRET = process.env.JWT_SECRET;
 
 const protect = async (req, res, next) => {
   let token;
   try {
+    if (!JWT_SECRET) {
+      return res.status(500).json({ message: "JWT_SECRET is not configured" });
+    }
     if (
       req.headers.authorization &&
       req.headers.authorization.startsWith("Bearer")

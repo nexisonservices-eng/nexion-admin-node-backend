@@ -19,8 +19,12 @@ const updateUser = async (req, res) => {
     if (typeof email !== "undefined") updateData.email = email;
 
     // Accept both nested payload (twilioData) and top-level fields
-    const normalizedTwilioId =
-      typeof twilioData.twilioId !== "undefined" ? twilioData.twilioId : req.body.twilioId;
+    const normalizedTwilioAccountSid =
+      typeof twilioData.twilioAccountSid !== "undefined" ? twilioData.twilioAccountSid : req.body.twilioAccountSid;
+    const normalizedTwilioAuthToken =
+      typeof twilioData.twilioAuthToken !== "undefined" ? twilioData.twilioAuthToken : req.body.twilioAuthToken;
+    const normalizedTwilioPhoneNumber =
+      typeof twilioData.twilioPhoneNumber !== "undefined" ? twilioData.twilioPhoneNumber : req.body.twilioPhoneNumber;
     const normalizedWhatsappId =
       typeof twilioData.whatsappId !== "undefined" ? twilioData.whatsappId : req.body.whatsappId;
     const normalizedWhatsappToken =
@@ -39,9 +43,14 @@ const updateUser = async (req, res) => {
       typeof twilioData.missedCallWebhook !== "undefined"
         ? twilioData.missedCallWebhook
         : req.body.missedCallWebhook;
-
-    if (typeof normalizedTwilioId !== "undefined") {
-      updateData.twilioid = String(normalizedTwilioId).trim();
+    if (typeof normalizedTwilioAccountSid !== "undefined") {
+      updateData.twilioaccountsid = String(normalizedTwilioAccountSid).trim();
+    }
+    if (typeof normalizedTwilioAuthToken !== "undefined") {
+      updateData.twilioauthtoken = String(normalizedTwilioAuthToken).trim();
+    }
+    if (typeof normalizedTwilioPhoneNumber !== "undefined") {
+      updateData.twiliophonenumber = String(normalizedTwilioPhoneNumber).trim();
     }
     if (typeof normalizedWhatsappId !== "undefined") {
       updateData.whatsappid = String(normalizedWhatsappId).trim();
@@ -68,7 +77,9 @@ const updateUser = async (req, res) => {
         username: updatedUser.username,
         email: updatedUser.email,
         role: updatedUser.role,
-        twilioId: updatedUser.twilioid || "",
+        twilioAccountSid: updatedUser.twilioaccountsid || "",
+        twilioAuthToken: updatedUser.twilioauthtoken || "",
+        twilioPhoneNumber: updatedUser.twiliophonenumber || updatedUser.phonenumber || "",
         whatsappId: updatedUser.whatsappid || "",
         whatsappToken: updatedUser.whatsapptoken || "",
         whatsappBusiness: updatedUser.whatsappbussiness || "",
@@ -82,3 +93,6 @@ const updateUser = async (req, res) => {
 };
 
 module.exports = updateUser;
+
+
+

@@ -13,8 +13,13 @@ const UserSchema = new mongoose.Schema(
     password: {
       type: String,
     },
-    
-    twilioid:{
+    twilioaccountsid:{
+      type:String
+    },
+    twilioauthtoken:{
+      type:String
+    },
+    twiliophonenumber:{
       type:String
     },
     whatsappid:{
@@ -88,3 +93,5 @@ resetPasswordExpires: {
 );
 
 module.exports = mongoose.model("admin", UserSchema);
+
+

@@ -37,7 +37,9 @@ const getUserCredentials = async (req, res) => {
       success: true,
       data: {
         userId: user._id,
-        twilioId: user.twilioid || "",
+        twilioAccountSid: user.twilioaccountsid || "",
+        twilioAuthToken: user.twilioauthtoken || "",
+        twilioPhoneNumber: user.twiliophonenumber || user.phonenumber || "",
         whatsappId: user.whatsappid || "",
         whatsappToken: user.whatsapptoken || "",
         whatsappBusiness: user.whatsappbussiness || "",
@@ -120,6 +122,12 @@ const normalizeTemplateVariables = (value) => {
     }))
     .sort((a, b) => a.index - b.index);
 };
+const maskSecret = (value) => {
+  const text = String(value || "");
+  if (!text) return "";
+  if (text.length <= 4) return "*".repeat(text.length);
+  return `${"*".repeat(text.length - 4)}${text.slice(-4)}`;
+};
 
 const phonesMatch = (a, b) => {
   const left = normalizePhone(a);
@@ -179,8 +187,14 @@ const updateUserCredentialsByUserId = async (req, res) => {
     }
     const payload = req.body || {};
     const setData = {};
-    if (Object.prototype.hasOwnProperty.call(payload, 'twilioId')) {
-      setData.twilioid = String(payload.twilioId || '').trim();
+    if (Object.prototype.hasOwnProperty.call(payload, 'twilioAccountSid')) {
+      setData.twilioaccountsid = String(payload.twilioAccountSid || '').trim();
+    }
+    if (Object.prototype.hasOwnProperty.call(payload, 'twilioAuthToken')) {
+      setData.twilioauthtoken = String(payload.twilioAuthToken || '').trim();
+    }
+    if (Object.prototype.hasOwnProperty.call(payload, 'twilioPhoneNumber')) {
+      setData.twiliophonenumber = String(payload.twilioPhoneNumber || '').trim();
     }
     if (Object.prototype.hasOwnProperty.call(payload, 'whatsappId')) {
       setData.whatsappid = String(payload.whatsappId || '').trim();
@@ -259,7 +273,9 @@ const updateUserCredentialsByUserId = async (req, res) => {
       data: {
         userId: user._id,
         email: user.email || "",
-        twilioId: user.twilioid || "",
+        twilioAccountSid: user.twilioaccountsid || "",
+        twilioAuthToken: user.twilioauthtoken || "",
+        twilioPhoneNumber: user.twiliophonenumber || user.phonenumber || "",
         whatsappId: user.whatsappid || "",
         whatsappToken: user.whatsapptoken || "",
         whatsappBusiness: user.whatsappbussiness || "",
@@ -307,7 +323,9 @@ const getUserCredentialsByUserId = async (req, res) => {
       data: {
         userId: user._id,
         email: user.email || "",
-        twilioId: user.twilioid || "",
+        twilioAccountSid: user.twilioaccountsid || "",
+        twilioAuthToken: user.twilioauthtoken || "",
+        twilioPhoneNumber: user.twiliophonenumber || user.phonenumber || "",
         whatsappId: user.whatsappid || "",
         whatsappToken: user.whatsapptoken || "",
         whatsappBusiness: user.whatsappbussiness || "",
@@ -338,10 +356,87 @@ const getUserCredentialsByUserId = async (req, res) => {
   }
 };
 
+const buildTwilioCredentialPayload = (user) => ({
+  userId: user._id,
+  twilioAccountSid: user.twilioaccountsid || "",
+  twilioAuthToken: user.twilioauthtoken || "",
+  twilioPhoneNumber: user.twiliophonenumber || user.phonenumber || "",
+  masked: {
+    twilioAccountSid: maskSecret(user.twilioaccountsid || ""),
+    twilioAuthToken: user.twilioauthtoken || "",
+    twilioPhoneNumber: maskSecret(user.twiliophonenumber || user.phonenumber || "")
+  }
+});
+
+const getTwilioCredentialsByUserId = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    if (!userId || !mongoose.Types.ObjectId.isValid(userId)) {
+      return res.status(400).json({ message: "Valid userId is required" });
+    }
+
+    const user = await User.findById(userId).lean();
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    const data = buildTwilioCredentialPayload(user);
+    if (!data.twilioAccountSid || !data.twilioAuthToken || !data.twilioPhoneNumber) {
+      return res.status(404).json({ message: "Twilio credentials not configured for user" });
+    }
+
+    return res.json({ success: true, data });
+  } catch (error) {
+    return res.status(500).json({
+      message: "Failed to fetch Twilio credentials by userId",
+      error: error.message
+    });
+  }
+};
+
+const getTwilioCredentialsByPhoneNumber = async (req, res) => {
+  try {
+    const { phoneNumber } = req.params;
+    if (!phoneNumber || !normalizePhone(phoneNumber)) {
+      return res.status(400).json({ message: "Valid phoneNumber is required" });
+    }
+
+    const users = await User.find({
+      $or: [
+        { twiliophonenumber: { $exists: true, $ne: "" } },
+        { phonenumber: { $exists: true, $ne: "" } }
+      ]
+    }).lean();
+    const found = users.find((u) => phonesMatch(u.twiliophonenumber || u.phonenumber, phoneNumber));
+
+    if (!found) {
+      return res.status(404).json({ message: "User not found for phoneNumber" });
+    }
+
+    const data = buildTwilioCredentialPayload(found);
+    if (!data.twilioAccountSid || !data.twilioAuthToken || !data.twilioPhoneNumber) {
+      return res.status(404).json({ message: "Twilio credentials not configured for user" });
+    }
+
+    return res.json({ success: true, data });
+  } catch (error) {
+    return res.status(500).json({
+      message: "Failed to fetch Twilio credentials by phoneNumber",
+      error: error.message
+    });
+  }
+};
+
 module.exports = getUserCredentials;
 module.exports.getUserByWhatsAppId = getUserByWhatsAppId;
 module.exports.getUserByPhoneNumber = getUserByPhoneNumber;
 module.exports.getUserCredentialsByUserId = getUserCredentialsByUserId;
+module.exports.getTwilioCredentialsByUserId = getTwilioCredentialsByUserId;
+module.exports.getTwilioCredentialsByPhoneNumber = getTwilioCredentialsByPhoneNumber;
 
 module.exports.updateUserCredentialsByUserId = updateUserCredentialsByUserId;
+
+
+
+
 

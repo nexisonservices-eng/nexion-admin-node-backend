@@ -6,7 +6,9 @@ const admindata = async (req, res) => {
   try {
     const {
       adminId,
-      twilioId,
+      twilioAccountSid,
+      twilioAuthToken,
+      twilioPhoneNumber,
       whatsappId,
       whatsappToken,
       whatsappBusiness,
@@ -38,7 +40,9 @@ const admindata = async (req, res) => {
     }
 
     const updateData = {};
-    if (typeof twilioId !== "undefined") updateData.twilioid = String(twilioId || "").trim();
+    if (typeof twilioAccountSid !== "undefined") updateData.twilioaccountsid = String(twilioAccountSid || "").trim();
+    if (typeof twilioAuthToken !== "undefined") updateData.twilioauthtoken = String(twilioAuthToken || "").trim();
+    if (typeof twilioPhoneNumber !== "undefined") updateData.twiliophonenumber = String(twilioPhoneNumber || "").trim();
     if (typeof whatsappId !== "undefined") updateData.whatsappid = String(whatsappId || "").trim();
     if (typeof whatsappToken !== "undefined") updateData.whatsapptoken = String(whatsappToken || "").trim();
     if (typeof normalizedWhatsappBusiness !== "undefined") {
@@ -63,7 +67,9 @@ const admindata = async (req, res) => {
         id: updatedUser._id,
         username: updatedUser.username,
         email: updatedUser.email,
-        twilioId: updatedUser.twilioid || "",
+        twilioAccountSid: updatedUser.twilioaccountsid || "",
+        twilioAuthToken: updatedUser.twilioauthtoken || "",
+        twilioPhoneNumber: updatedUser.twiliophonenumber || updatedUser.phonenumber || "",
         whatsappId: updatedUser.whatsappid || "",
         whatsappToken: updatedUser.whatsapptoken || "",
         whatsappBusiness: updatedUser.whatsappbussiness || "",
@@ -80,3 +86,6 @@ const admindata = async (req, res) => {
 };
 
 module.exports = admindata;
+
+
+

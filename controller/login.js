@@ -19,9 +19,11 @@ const loginuser = async (req, res) => {
       email === "superadmin@technova.com" &&
       password === "Super@123"
     ) {
+      const superAdminUserId = "superadmin-id";
       const token = jwt.sign(
         {
-          id: "superadmin-id",
+          id: superAdminUserId,
+          userId: superAdminUserId,
           email,
           role: "superadmin",
         },
@@ -33,11 +35,12 @@ const loginuser = async (req, res) => {
         message: "Super admin login successful",
         token,
         user: {
-          id: "superadmin-id",
+          id: superAdminUserId,
+          userId: superAdminUserId,
           username: "Super Admin",
           email,
           role: "superadmin",
-          twilioId: "",
+          twilioAccountSid: "",
           whatsappId: "",
           whatsappToken: "",
           whatsappBusiness: "",
@@ -71,6 +74,7 @@ const loginuser = async (req, res) => {
     const token = jwt.sign(
       {
         userId: user._id,
+        id: user._id,
         email: user.email,
         role: user.role, // user | admin
       },
@@ -84,10 +88,13 @@ const loginuser = async (req, res) => {
       token,
       user: {
         id: user._id,
+        userId: user._id,
         username: user.username,
         email: user.email,
         role: user.role,
-        twilioId: user.twilioid || "",
+        twilioAccountSid: user.twilioaccountsid || "",
+        twilioAuthToken: user.twilioauthtoken || "",
+        twilioPhoneNumber: user.twiliophonenumber || user.phonenumber || "",
         whatsappId: user.whatsappid || "",
         whatsappToken: user.whatsapptoken || "",
         whatsappBusiness: user.whatsappbussiness || "",
@@ -106,3 +113,5 @@ const loginuser = async (req, res) => {
 };
 
 module.exports = loginuser;
+
+
