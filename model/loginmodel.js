@@ -34,6 +34,23 @@ const UserSchema = new mongoose.Schema(
     phonenumber:{
       type:String
     },
+    companyId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "company"
+    },
+    companyRole: {
+      type: String,
+      enum: ["admin", "user"],
+      default: "admin"
+    },
+    googleId: {
+      type: String
+    },
+    authProvider: {
+      type: String,
+      enum: ["email", "otp", "google"],
+      default: "email"
+    },
     missedcallwebhook:{
       type:String
     },

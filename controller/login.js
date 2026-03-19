@@ -1,6 +1,7 @@
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
 const User = require("../model/loginmodel");
+const { buildPlanContext } = require("../utils/planUtils");
 
 const loginuser = async (req, res) => {
   try {
@@ -71,12 +72,18 @@ const loginuser = async (req, res) => {
     }
 
     // 3. Create token
+    const planContext = await buildPlanContext(user.companyId);
     const token = jwt.sign(
       {
         userId: user._id,
         id: user._id,
         email: user.email,
-        role: user.role, // user | admin
+        role: user.role,
+        companyId: user.companyId,
+        companyRole: user.companyRole,
+        planCode: planContext.planCode,
+        featureFlags: planContext.featureFlags,
+        subscriptionStatus: planContext.subscriptionStatus
       },
       process.env.JWT_SECRET,
       { expiresIn: "7d" }
@@ -100,6 +107,11 @@ const loginuser = async (req, res) => {
         whatsappBusiness: user.whatsappbussiness || "",
         phoneNumber: user.phonenumber || "",
         missedCallWebhook: user.missedcallwebhook || "",
+        companyId: user.companyId || null,
+        companyRole: user.companyRole || "user",
+        planCode: planContext.planCode,
+        featureFlags: planContext.featureFlags,
+        subscriptionStatus: planContext.subscriptionStatus
       },
     });
 

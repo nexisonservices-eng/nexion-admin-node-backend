@@ -12,7 +12,28 @@ const registerAdmin = async (req, res) => {
 
     const existingUser = await User.findOne({ email });
     if (existingUser) {
-      return res.status(409).json({ message: "User already exists" });
+      const hashedPassword = await bcrypt.hash(password, 10);
+      existingUser.username = username || existingUser.username;
+      existingUser.password = hashedPassword;
+      existingUser.role = "admin";
+      await existingUser.save();
+
+      const token = jwt.sign(
+        { userId: existingUser._id, email: existingUser.email, role: existingUser.role },
+        process.env.JWT_SECRET,
+        { expiresIn: "7d" }
+      );
+
+      return res.status(200).json({
+        message: "Existing user promoted to admin",
+        token,
+        user: {
+          id: existingUser._id,
+          username: existingUser.username,
+          email: existingUser.email,
+          role: existingUser.role,
+        },
+      });
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);

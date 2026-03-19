@@ -21,6 +21,23 @@ const loginschema = new mongoose.Schema(
       enum: ["user", "admin"],
       default: "user", 
     },
+    companyId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "company"
+    },
+    companyRole: {
+      type: String,
+      enum: ["admin", "user"],
+      default: "admin"
+    },
+    googleId: {
+      type: String
+    },
+    authProvider: {
+      type: String,
+      enum: ["email", "otp", "google"],
+      default: "email"
+    },
 
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" }, 
     createdByName: { type: String },

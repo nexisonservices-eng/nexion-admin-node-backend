@@ -1,5 +1,6 @@
 const mongoose = require("mongoose");
 const User = require("../model/loginmodel");
+const { buildPlanContext } = require("../utils/planUtils");
 
 const getUserCredentials = async (req, res) => {
   try {
@@ -33,10 +34,18 @@ const getUserCredentials = async (req, res) => {
       }
     }
 
+    const planContext = await buildPlanContext(user.companyId);
     return res.json({
       success: true,
       data: {
         userId: user._id,
+        role: user.role,
+        email: user.email || "",
+        companyId: user.companyId || null,
+        companyRole: user.companyRole || "user",
+        planCode: planContext.planCode,
+        featureFlags: planContext.featureFlags,
+        subscriptionStatus: planContext.subscriptionStatus,
         twilioAccountSid: user.twilioaccountsid || "",
         twilioAuthToken: user.twilioauthtoken || "",
         twilioPhoneNumber: user.twiliophonenumber || user.phonenumber || "",
@@ -268,10 +277,16 @@ const updateUserCredentialsByUserId = async (req, res) => {
     }
     Object.assign(user, setData);
     await user.save();
+    const planContext = await buildPlanContext(user.companyId);
     return res.json({
       success: true,
       data: {
         userId: user._id,
+        companyId: user.companyId || null,
+        companyRole: user.companyRole || "user",
+        planCode: planContext.planCode,
+        featureFlags: planContext.featureFlags,
+        subscriptionStatus: planContext.subscriptionStatus,
         email: user.email || "",
         twilioAccountSid: user.twilioaccountsid || "",
         twilioAuthToken: user.twilioauthtoken || "",
@@ -318,10 +333,16 @@ const getUserCredentialsByUserId = async (req, res) => {
       return res.status(404).json({ message: "User not found" });
     }
 
+    const planContext = await buildPlanContext(user.companyId);
     return res.json({
       success: true,
       data: {
         userId: user._id,
+        companyId: user.companyId || null,
+        companyRole: user.companyRole || "user",
+        planCode: planContext.planCode,
+        featureFlags: planContext.featureFlags,
+        subscriptionStatus: planContext.subscriptionStatus,
         email: user.email || "",
         twilioAccountSid: user.twilioaccountsid || "",
         twilioAuthToken: user.twilioauthtoken || "",

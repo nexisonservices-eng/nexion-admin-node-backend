@@ -22,7 +22,12 @@ const protect = async (req, res, next) => {
         id: decoded.userId || decoded.id,
         username: decoded.username || null,
         email: decoded.email || null,
-        role: decoded.role || null
+        role: decoded.role || null,
+        companyId: decoded.companyId || null,
+        companyRole: decoded.companyRole || null,
+        planCode: decoded.planCode || null,
+        featureFlags: decoded.featureFlags || null,
+        subscriptionStatus: decoded.subscriptionStatus || null
       };
 
       if (!req.user.id) {
