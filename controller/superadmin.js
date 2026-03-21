@@ -30,6 +30,7 @@ const superAdminLogin = async (req, res) => {
       {
         id: "superadmin-id",
         username: "Super Admin",
+        email,
         role: "superadmin",
       },
       process.env.JWT_SECRET,

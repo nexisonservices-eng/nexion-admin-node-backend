@@ -7,7 +7,8 @@ const PLAN_FEATURES = {
     inboundCalls: false,
     outboundCalls: false,
     whatsappTemplates: true,
-    teamInbox: true
+    teamInbox: true,
+    adsManager: true
   },
   basic: {
     broadcastMessaging: true,
@@ -15,7 +16,8 @@ const PLAN_FEATURES = {
     inboundCalls: false,
     outboundCalls: false,
     whatsappTemplates: true,
-    teamInbox: true
+    teamInbox: true,
+    adsManager: false
   },
   growth: {
     broadcastMessaging: true,
@@ -23,7 +25,8 @@ const PLAN_FEATURES = {
     inboundCalls: true,
     outboundCalls: false,
     whatsappTemplates: true,
-    teamInbox: true
+    teamInbox: true,
+    adsManager: true
   },
   enterprise: {
     broadcastMessaging: true,
@@ -31,7 +34,8 @@ const PLAN_FEATURES = {
     inboundCalls: true,
     outboundCalls: true,
     whatsappTemplates: true,
-    teamInbox: true
+    teamInbox: true,
+    adsManager: true
   }
 };
 

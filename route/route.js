@@ -1,4 +1,5 @@
 const express = require("express");
+const multer = require("multer");
 const register = require("../controller/registercontroller");
 const authMiddleware = require("../middleawre/middlewarelogout");
 const { logout } = require("../controller/logout");
@@ -14,22 +15,14 @@ const { registerAdmin } = require("../controller/adminregister");
 const { superAdminLogin } = require("../controller/superadmin");
 const getAdmins = require("../controller/getAdmin");
 const getUserCredentials = require("../controller/usercredentials");
-const getUserByWhatsAppId = getUserCredentials.getUserByWhatsAppId;
-const getUserByPhoneNumber = getUserCredentials.getUserByPhoneNumber;
-const getUserCredentialsByUserId = getUserCredentials.getUserCredentialsByUserId;
-const updateUserCredentialsByUserId = getUserCredentials.updateUserCredentialsByUserId;
-const getTwilioCredentialsByUserId = getUserCredentials.getTwilioCredentialsByUserId;
-const getTwilioCredentialsByPhoneNumber = getUserCredentials.getTwilioCredentialsByPhoneNumber;
-const multer = require("multer");
+const billingController = require("../controller/billingController");
 const metaDocuments = require("../controller/metaDocuments");
-const subscriptions = require("../controller/subscriptions");
-const payments = require("../controller/payments");
-const adminManagement = require("../controller/adminManagement");
-const usage = require("../controller/usage");
 const otpAuth = require("../controller/otpAuth");
 const ivrLogs = require("../controller/ivrLogs");
 const { requireCompany } = require("../middleawre/companymiddleware");
 const firebaseAuth = require("../controller/firebaseAuth");
+const payments = require("../controller/payments");
+const adminManagement = require("../controller/adminManagement");
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage() });
@@ -48,25 +41,21 @@ const requireInternalApiKey = (req, res, next) => {
   next();
 };
 
+router.post("/api/nexion/register", register.registeruser);
 router.post("/api/nexion/login", loginuser);
 router.post("/superadmin/login", superAdminLogin);
 router.post("/api/auth/otp/start", otpAuth.startOtp);
 router.post("/api/auth/otp/verify", otpAuth.verifyOtp);
 router.post("/api/auth/firebase", firebaseAuth);
-
-router.get("/api/user/credentials", protect, getUserCredentials);
-router.get("/internal/user/by-whatsapp-id/:whatsappId", requireInternalApiKey, getUserByWhatsAppId);
-router.get("/internal/user/by-phone-number/:phoneNumber", requireInternalApiKey, getUserByPhoneNumber);
-router.get("/internal/user/credentials/:userId", requireInternalApiKey, getUserCredentialsByUserId);
-router.put("/internal/user/credentials/:userId", requireInternalApiKey, updateUserCredentialsByUserId);
-router.get("/internal/twilio/credentials/by-user-id/:userId", requireInternalApiKey, getTwilioCredentialsByUserId);
-router.get("/internal/twilio/credentials/by-phone-number/:phoneNumber", requireInternalApiKey, getTwilioCredentialsByPhoneNumber);
-router.post("/internal/usage/record", requireInternalApiKey, usage.recordUsage);
-router.post("/internal/ivr/log", requireInternalApiKey, ivrLogs.recordConversation);
-
-router.post("/api/nexion/register", register.registeruser);
 router.post("/api/forgotpassword", forgotPassword);
 router.post("/api/resetpassword/:token", resetPassword);
+router.post("/api/nexion/logout", authMiddleware, logout);
+
+router.get("/api/user/credentials", protect, getUserCredentials);
+router.get("/api/plan-pricing", billingController.listPublicPlanPricing);
+router.post("/api/subscriptions/create", protect, requireCompany, billingController.createSubscriptionOrder);
+router.post("/api/payments/verify", protect, requireCompany, billingController.verifySubscriptionPayment);
+router.post("/api/payments/razorpay/webhook", payments.razorpayWebhook);
 
 router.post(
   "/api/meta-documents",
@@ -75,40 +64,30 @@ router.post(
   upload.single("file"),
   metaDocuments.uploadMetaDocument
 );
-router.get(
-  "/api/meta-documents",
-  protect,
-  requireCompany,
-  metaDocuments.listMetaDocuments
-);
-router.get(
-  "/api/admin/meta-documents",
-  protect,
-  requireSuperAdmin,
-  metaDocuments.listMetaDocumentsAdmin
-);
-router.post(
-  "/api/meta-documents/:id/approve",
-  protect,
-  requireSuperAdmin,
-  metaDocuments.approveMetaDocument
-);
+router.get("/api/meta-documents", protect, requireCompany, metaDocuments.listMetaDocuments);
+router.get("/api/admin/meta-documents", protect, requireSuperAdmin, metaDocuments.listMetaDocumentsAdmin);
+router.post("/api/meta-documents/:id/approve", protect, requireSuperAdmin, metaDocuments.approveMetaDocument);
 
-router.post("/api/subscriptions/create", protect, requireCompany, subscriptions.createSubscription);
-router.post("/api/payments/razorpay/webhook", payments.razorpayWebhook);
+router.get("/internal/user/by-whatsapp-id/:whatsappId", getUserCredentials.getUserByWhatsAppId);
+router.get("/internal/user/by-phone-number/:phoneNumber", getUserCredentials.getUserByPhoneNumber);
+router.get("/internal/user/credentials/:userId", getUserCredentials.getUserCredentialsByUserId);
+router.put("/internal/user/credentials/:userId", getUserCredentials.updateUserCredentialsByUserId);
+router.get("/internal/twilio/credentials/by-user-id/:userId", getUserCredentials.getTwilioCredentialsByUserId);
+router.get("/internal/twilio/credentials/by-phone-number/:phoneNumber", getUserCredentials.getTwilioCredentialsByPhoneNumber);
+router.post("/internal/usage/record", billingController.recordInternalUsage);
+router.post("/internal/ivr/log", requireInternalApiKey, ivrLogs.recordConversation);
 
 router.get("/api/getadmin", protect, requireSuperAdmin, getAdmins);
+router.get("/api/admin/users", protect, requireSuperAdmin, billingController.listUsers);
+router.get("/api/admin/plan-pricing", protect, requireSuperAdmin, billingController.listAdminPlanPricing);
+router.put("/api/admin/plan-pricing", protect, requireSuperAdmin, billingController.updatePlanPricing);
+router.get("/api/admin/payments", protect, requireSuperAdmin, billingController.listPayments);
+router.get("/api/admin/subscriptions", protect, requireSuperAdmin, billingController.listSubscriptions);
+router.get("/api/admin/companies", protect, requireSuperAdmin, adminManagement.getCompanies);
+router.patch("/api/admin/companies/:id/disable", protect, requireSuperAdmin, adminManagement.disableCompany);
 router.put("/api/edit/:id", protect, requireSuperAdmin, updateUser);
 router.delete("/api/delete/:id", protect, requireSuperAdmin, deleteUser);
 router.post("/registeradmin", protect, requireSuperAdmin, registerAdmin);
 router.post("/api/nexionadmin/admindata", protect, requireSuperAdmin, admindata);
-router.get("/api/admin/companies", protect, requireSuperAdmin, adminManagement.getCompanies);
-router.get("/api/admin/users", protect, requireSuperAdmin, adminManagement.getUsers);
-router.get("/api/admin/payments", protect, requireSuperAdmin, adminManagement.getPayments);
-router.get("/api/admin/subscriptions", protect, requireSuperAdmin, adminManagement.getSubscriptions);
-router.patch("/api/admin/companies/:id/disable", protect, requireSuperAdmin, adminManagement.disableCompany);
-
-router.post("/api/nexion/logout", authMiddleware, logout);
 
 module.exports = router;
-

@@ -9,18 +9,19 @@ const deleteUser = async (req, res) => {
       return res.status(404).json({ message: "User not found" });
     }
 
-    if (target.role !== "admin") {
-      return res.status(400).json({ message: "Only admin accounts can be deleted from this endpoint" });
+    if (target.role === "superadmin") {
+      return res.status(400).json({ message: "Superadmin accounts cannot be deleted from this endpoint" });
     }
 
     await User.findByIdAndDelete(userId);
 
     return res.status(200).json({
-      message: "Admin deleted successfully",
+      message: "Account deleted successfully",
       user: {
         id: target._id,
         username: target.username,
         email: target.email,
+        role: target.role,
       },
     });
   } catch (error) {

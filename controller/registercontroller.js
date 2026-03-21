@@ -2,9 +2,9 @@ const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
 const User = require("../model/loginmodel");
 const Company = require("../model/company");
-const Subscription = require("../model/subscription");
 const { ensureCompanyFolders, sanitizeCompanyName } = require("../config/cloudinary");
-const { getDefaultTrial, buildPlanContext } = require("../utils/planUtils");
+const { createTrialSubscription } = require("../utils/billing");
+const { buildSubscriptionContext } = require("./billingController");
 
 const registeruser = async (req, res) => {
   try {
@@ -20,29 +20,22 @@ const registeruser = async (req, res) => {
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
-
-    const newUser = new User({
+    const newUser = await User.create({
       username,
       email,
       password: hashedPassword,
       role: "user",
       createdBy: null,
       createdByName: null,
-      authProvider: "email",
+      authProvider: "email"
     });
 
-    await newUser.save();
-
-    const trial = getDefaultTrial();
     const resolvedCompanyName = companyName || username || email;
-    const slug = sanitizeCompanyName(resolvedCompanyName);
     const company = await Company.create({
       name: resolvedCompanyName,
-      slug,
+      slug: sanitizeCompanyName(resolvedCompanyName),
       createdBy: newUser._id,
-      status: "active",
-      trialStart: trial.trialStart,
-      trialEnd: trial.trialEnd
+      status: "active"
     });
 
     await ensureCompanyFolders({
@@ -50,45 +43,53 @@ const registeruser = async (req, res) => {
       companyId: company._id
     });
 
-    await Subscription.create({
-      companyId: company._id,
-      planCode: "trial",
-      status: "active",
-      billingCycle: "trial",
-      startsAt: trial.trialStart,
-      endsAt: trial.trialEnd,
-      featureFlags: trial.featureFlags,
-      limits: trial.limits
-    });
-
     newUser.companyId = company._id;
     newUser.companyRole = "admin";
     await newUser.save();
 
-    const planContext = await buildPlanContext(company._id);
+    await createTrialSubscription({
+      companyId: company._id,
+      userId: newUser._id
+    });
 
+    const billing = await buildSubscriptionContext(newUser);
     const token = jwt.sign(
       {
         userId: newUser._id,
+        id: newUser._id,
+        email: newUser.email,
         role: newUser.role,
         companyId: newUser.companyId,
         companyRole: newUser.companyRole,
-        planCode: planContext.planCode,
-        featureFlags: planContext.featureFlags,
-        subscriptionStatus: planContext.subscriptionStatus
+        planCode: billing.planCode,
+        featureFlags: billing.featureFlags,
+        subscriptionStatus: billing.subscriptionStatus,
+        workspaceAccessState: billing.workspaceAccessState,
+        canPerformActions: billing.canPerformActions,
+        canViewAnalytics: billing.canViewAnalytics
       },
       process.env.JWT_SECRET,
       { expiresIn: "7d" }
     );
 
-    res.status(201).json({
-       role: newUser.role,
+    return res.status(201).json({
+      role: newUser.role,
       message: "User registered successfully",
       token,
+      user: {
+        id: newUser._id,
+        userId: newUser._id,
+        username: newUser.username,
+        email: newUser.email,
+        role: newUser.role,
+        companyId: newUser.companyId || null,
+        companyRole: newUser.companyRole || "admin",
+        companyName: company.name || "",
+        ...billing
+      }
     });
-
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    return res.status(500).json({ message: error.message });
   }
 };
 

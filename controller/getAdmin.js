@@ -1,4 +1,6 @@
 const User = require("../model/loginmodel");
+const Subscription = require("../model/subscription");
+const { resolveSubscriptionStatus } = require("../utils/billing");
 
 const getAdmins = async (req, res) => {
   try {
@@ -6,11 +8,26 @@ const getAdmins = async (req, res) => {
       "username email role twilioaccountsid twilioauthtoken twiliophonenumber whatsappid whatsapptoken whatsappbussiness metaappid metaappsecret metaredirecturi metauseraccesstoken metaadaccountid metaapiversion metajwtsecret phonenumber missedcallwebhook"
     );
 
+    const subscriptions = await Subscription.find({
+      companyId: { $in: users.map((u) => u.companyId).filter(Boolean) }
+    })
+      .sort({ createdAt: -1 })
+      .lean();
+    const latestByCompany = new Map();
+    subscriptions.forEach((sub) => {
+      const key = String(sub.companyId || "");
+      if (key && !latestByCompany.has(key)) latestByCompany.set(key, sub);
+    });
+
     const formattedUsers = users.map((u) => ({
+      ...(resolveSubscriptionStatus(latestByCompany.get(String(u.companyId || ""))) || {}),
       _id: u._id,
       username: u.username,
       email: u.email,
       role: u.role,
+      companyId: u.companyId || null,
+      companyRole: u.companyRole || "admin",
+      companyName: u.companyName || "",
       twilioAccountSid: u.twilioaccountsid || "",
       twilioAuthToken: u.twilioauthtoken || "",
       twilioPhoneNumber: u.twiliophonenumber || u.phonenumber || "",

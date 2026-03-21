@@ -1,6 +1,13 @@
 const MetaDocument = require("../model/metaDocument");
 const { cloudinary, configureCloudinary, isCloudinaryConfigured } = require("../config/cloudinary");
 
+const emitDocumentEvents = (req, payload = {}) => {
+  const io = req.app.get("io");
+  if (!io) return;
+  io.emit("documents.updated", payload);
+  io.emit("workspace.access.updated", payload);
+};
+
 const uploadMetaDocument = async (req, res) => {
   try {
     const { docType } = req.body;
@@ -38,6 +45,12 @@ const uploadMetaDocument = async (req, res) => {
           docType,
           url: result.secure_url,
           status: "pending"
+        });
+
+        emitDocumentEvents(req, {
+          companyId: String(req.user.companyId || ""),
+          userId: String(req.user.id || ""),
+          documentStatus: "pending"
         });
 
         res.status(201).json({ success: true, data: doc });
@@ -92,6 +105,11 @@ const approveMetaDocument = async (req, res) => {
     if (!doc) {
       return res.status(404).json({ message: "Document not found" });
     }
+    emitDocumentEvents(req, {
+      companyId: String(doc.companyId || ""),
+      userId: String(doc.userId || ""),
+      documentStatus: nextStatus
+    });
     res.json({ success: true, data: doc });
   } catch (error) {
     res.status(500).json({ message: "Failed to update document", error: error.message });

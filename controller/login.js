@@ -1,7 +1,7 @@
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
 const User = require("../model/loginmodel");
-const { buildPlanContext } = require("../utils/planUtils");
+const { buildSubscriptionContext, ensureTrialForUser } = require("./billingController");
 
 const loginuser = async (req, res) => {
   try {
@@ -72,7 +72,8 @@ const loginuser = async (req, res) => {
     }
 
     // 3. Create token
-    const planContext = await buildPlanContext(user.companyId);
+    await ensureTrialForUser(user);
+    const billing = await buildSubscriptionContext(user);
     const token = jwt.sign(
       {
         userId: user._id,
@@ -81,9 +82,12 @@ const loginuser = async (req, res) => {
         role: user.role,
         companyId: user.companyId,
         companyRole: user.companyRole,
-        planCode: planContext.planCode,
-        featureFlags: planContext.featureFlags,
-        subscriptionStatus: planContext.subscriptionStatus
+        planCode: billing.planCode,
+        featureFlags: billing.featureFlags,
+        subscriptionStatus: billing.subscriptionStatus,
+        workspaceAccessState: billing.workspaceAccessState,
+        canPerformActions: billing.canPerformActions,
+        canViewAnalytics: billing.canViewAnalytics
       },
       process.env.JWT_SECRET,
       { expiresIn: "7d" }
@@ -99,6 +103,10 @@ const loginuser = async (req, res) => {
         username: user.username,
         email: user.email,
         role: user.role,
+        companyId: user.companyId || null,
+        companyRole: user.companyRole || "admin",
+        companyName: user.companyName || "",
+        ...billing,
         twilioAccountSid: user.twilioaccountsid || "",
         twilioAuthToken: user.twilioauthtoken || "",
         twilioPhoneNumber: user.twiliophonenumber || user.phonenumber || "",
@@ -106,12 +114,7 @@ const loginuser = async (req, res) => {
         whatsappToken: user.whatsapptoken || "",
         whatsappBusiness: user.whatsappbussiness || "",
         phoneNumber: user.phonenumber || "",
-        missedCallWebhook: user.missedcallwebhook || "",
-        companyId: user.companyId || null,
-        companyRole: user.companyRole || "user",
-        planCode: planContext.planCode,
-        featureFlags: planContext.featureFlags,
-        subscriptionStatus: planContext.subscriptionStatus
+        missedCallWebhook: user.missedcallwebhook || ""
       },
     });
 

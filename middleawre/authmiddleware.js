@@ -24,10 +24,13 @@ const protect = async (req, res, next) => {
         email: decoded.email || null,
         role: decoded.role || null,
         companyId: decoded.companyId || null,
-        companyRole: decoded.companyRole || null,
-        planCode: decoded.planCode || null,
-        featureFlags: decoded.featureFlags || null,
-        subscriptionStatus: decoded.subscriptionStatus || null
+        companyRole: decoded.companyRole || "user",
+        planCode: decoded.planCode || "",
+        featureFlags: decoded.featureFlags || {},
+        subscriptionStatus: decoded.subscriptionStatus || "",
+        workspaceAccessState: decoded.workspaceAccessState || "",
+        canPerformActions: typeof decoded.canPerformActions === "boolean" ? decoded.canPerformActions : true,
+        canViewAnalytics: typeof decoded.canViewAnalytics === "boolean" ? decoded.canViewAnalytics : true
       };
 
       if (!req.user.id) {
