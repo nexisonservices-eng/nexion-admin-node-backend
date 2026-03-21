@@ -31,6 +31,27 @@ const UserSchema = new mongoose.Schema(
     whatsappbussiness:{
       type:String
     },
+    metaappid: {
+      type: String
+    },
+    metaappsecret: {
+      type: String
+    },
+    metaredirecturi: {
+      type: String
+    },
+    metauseraccesstoken: {
+      type: String
+    },
+    metaadaccountid: {
+      type: String
+    },
+    metaapiversion: {
+      type: String
+    },
+    metajwtsecret: {
+      type: String
+    },
     phonenumber:{
       type:String
     },

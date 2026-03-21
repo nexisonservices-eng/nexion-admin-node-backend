@@ -13,6 +13,20 @@ const admindata = async (req, res) => {
       whatsappToken,
       whatsappBusiness,
       whatsappbussiness,
+      metaAppId,
+      metaappId,
+      metaAppSecret,
+      metaappSecret,
+      metaRedirectUri,
+      metaredirecturi,
+      metaUserAccessToken,
+      metauseraccesstoken,
+      metaAdAccountId,
+      metaadaccountid,
+      metaApiVersion,
+      metaapiVersion,
+      metaJwtSecret,
+      metajwtSecret,
       phoneNumber,
       phonenumber,
       missedCallWebhook,
@@ -21,6 +35,20 @@ const admindata = async (req, res) => {
 
     const normalizedWhatsappBusiness =
       typeof whatsappBusiness !== "undefined" ? whatsappBusiness : whatsappbussiness;
+    const normalizedMetaAppId =
+      typeof metaAppId !== "undefined" ? metaAppId : metaappId;
+    const normalizedMetaAppSecret =
+      typeof metaAppSecret !== "undefined" ? metaAppSecret : metaappSecret;
+    const normalizedMetaRedirectUri =
+      typeof metaRedirectUri !== "undefined" ? metaRedirectUri : metaredirecturi;
+    const normalizedMetaUserAccessToken =
+      typeof metaUserAccessToken !== "undefined" ? metaUserAccessToken : metauseraccesstoken;
+    const normalizedMetaAdAccountId =
+      typeof metaAdAccountId !== "undefined" ? metaAdAccountId : metaadaccountid;
+    const normalizedMetaApiVersion =
+      typeof metaApiVersion !== "undefined" ? metaApiVersion : metaapiVersion;
+    const normalizedMetaJwtSecret =
+      typeof metaJwtSecret !== "undefined" ? metaJwtSecret : metajwtSecret;
     const normalizedPhoneNumber =
       typeof phoneNumber !== "undefined" ? phoneNumber : phonenumber;
     const normalizedMissedCallWebhook =
@@ -48,6 +76,27 @@ const admindata = async (req, res) => {
     if (typeof normalizedWhatsappBusiness !== "undefined") {
       updateData.whatsappbussiness = String(normalizedWhatsappBusiness || "").trim();
     }
+    if (typeof normalizedMetaAppId !== "undefined") {
+      updateData.metaappid = String(normalizedMetaAppId || "").trim();
+    }
+    if (typeof normalizedMetaAppSecret !== "undefined") {
+      updateData.metaappsecret = String(normalizedMetaAppSecret || "").trim();
+    }
+    if (typeof normalizedMetaRedirectUri !== "undefined") {
+      updateData.metaredirecturi = String(normalizedMetaRedirectUri || "").trim();
+    }
+    if (typeof normalizedMetaUserAccessToken !== "undefined") {
+      updateData.metauseraccesstoken = String(normalizedMetaUserAccessToken || "").trim();
+    }
+    if (typeof normalizedMetaAdAccountId !== "undefined") {
+      updateData.metaadaccountid = String(normalizedMetaAdAccountId || "").trim();
+    }
+    if (typeof normalizedMetaApiVersion !== "undefined") {
+      updateData.metaapiversion = String(normalizedMetaApiVersion || "").trim();
+    }
+    if (typeof normalizedMetaJwtSecret !== "undefined") {
+      updateData.metajwtsecret = String(normalizedMetaJwtSecret || "").trim();
+    }
     if (typeof normalizedPhoneNumber !== "undefined") {
       updateData.phonenumber = String(normalizedPhoneNumber || "").trim();
     }
@@ -73,6 +122,13 @@ const admindata = async (req, res) => {
         whatsappId: updatedUser.whatsappid || "",
         whatsappToken: updatedUser.whatsapptoken || "",
         whatsappBusiness: updatedUser.whatsappbussiness || "",
+        metaAppId: updatedUser.metaappid || "",
+        metaAppSecret: updatedUser.metaappsecret || "",
+        metaRedirectUri: updatedUser.metaredirecturi || "",
+        metaUserAccessToken: updatedUser.metauseraccesstoken || "",
+        metaAdAccountId: updatedUser.metaadaccountid || "",
+        metaApiVersion: updatedUser.metaapiversion || "",
+        metaJwtSecret: updatedUser.metajwtsecret || "",
         phoneNumber: updatedUser.phonenumber || "",
         missedCallWebhook: updatedUser.missedcallwebhook || "",
       },

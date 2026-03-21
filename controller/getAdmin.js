@@ -3,7 +3,7 @@ const User = require("../model/loginmodel");
 const getAdmins = async (req, res) => {
   try {
     const users = await User.find({ role: "admin" }).select(
-      "username email role twilioaccountsid twilioauthtoken twiliophonenumber whatsappid whatsapptoken whatsappbussiness phonenumber missedcallwebhook"
+      "username email role twilioaccountsid twilioauthtoken twiliophonenumber whatsappid whatsapptoken whatsappbussiness metaappid metaappsecret metaredirecturi metauseraccesstoken metaadaccountid metaapiversion metajwtsecret phonenumber missedcallwebhook"
     );
 
     const formattedUsers = users.map((u) => ({
@@ -17,6 +17,13 @@ const getAdmins = async (req, res) => {
       whatsappId: u.whatsappid || "",
       whatsappToken: u.whatsapptoken || "",
       whatsappBusiness: u.whatsappbussiness || "",
+      metaAppId: u.metaappid || "",
+      metaAppSecret: u.metaappsecret || "",
+      metaRedirectUri: u.metaredirecturi || "",
+      metaUserAccessToken: u.metauseraccesstoken || "",
+      metaAdAccountId: u.metaadaccountid || "",
+      metaApiVersion: u.metaapiversion || "",
+      metaJwtSecret: u.metajwtsecret || "",
       phoneNumber: u.phonenumber || "",
       missedCallWebhook: u.missedcallwebhook || "",
     }));

@@ -52,6 +52,13 @@ const getUserCredentials = async (req, res) => {
         whatsappId: user.whatsappid || "",
         whatsappToken: user.whatsapptoken || "",
         whatsappBusiness: user.whatsappbussiness || "",
+        metaAppId: user.metaappid || "",
+        metaAppSecret: user.metaappsecret || "",
+        metaRedirectUri: user.metaredirecturi || "",
+        metaUserAccessToken: user.metauseraccesstoken || "",
+        metaAdAccountId: user.metaadaccountid || "",
+        metaApiVersion: user.metaapiversion || "",
+        metaJwtSecret: user.metajwtsecret || "",
         phoneNumber: user.phonenumber || "",
         missedCallWebhook: user.missedcallwebhook || "",
         missedCallAutomationEnabled:
@@ -220,6 +227,48 @@ const updateUserCredentialsByUserId = async (req, res) => {
       ).trim();
     }
     if (
+      Object.prototype.hasOwnProperty.call(payload, 'metaAppId') ||
+      Object.prototype.hasOwnProperty.call(payload, 'metaappid')
+    ) {
+      setData.metaappid = String(payload.metaAppId ?? payload.metaappid ?? '').trim();
+    }
+    if (
+      Object.prototype.hasOwnProperty.call(payload, 'metaAppSecret') ||
+      Object.prototype.hasOwnProperty.call(payload, 'metaappsecret')
+    ) {
+      setData.metaappsecret = String(payload.metaAppSecret ?? payload.metaappsecret ?? '').trim();
+    }
+    if (
+      Object.prototype.hasOwnProperty.call(payload, 'metaRedirectUri') ||
+      Object.prototype.hasOwnProperty.call(payload, 'metaredirecturi')
+    ) {
+      setData.metaredirecturi = String(payload.metaRedirectUri ?? payload.metaredirecturi ?? '').trim();
+    }
+    if (
+      Object.prototype.hasOwnProperty.call(payload, 'metaUserAccessToken') ||
+      Object.prototype.hasOwnProperty.call(payload, 'metauseraccesstoken')
+    ) {
+      setData.metauseraccesstoken = String(payload.metaUserAccessToken ?? payload.metauseraccesstoken ?? '').trim();
+    }
+    if (
+      Object.prototype.hasOwnProperty.call(payload, 'metaAdAccountId') ||
+      Object.prototype.hasOwnProperty.call(payload, 'metaadaccountid')
+    ) {
+      setData.metaadaccountid = String(payload.metaAdAccountId ?? payload.metaadaccountid ?? '').trim();
+    }
+    if (
+      Object.prototype.hasOwnProperty.call(payload, 'metaApiVersion') ||
+      Object.prototype.hasOwnProperty.call(payload, 'metaapiversion')
+    ) {
+      setData.metaapiversion = String(payload.metaApiVersion ?? payload.metaapiversion ?? '').trim();
+    }
+    if (
+      Object.prototype.hasOwnProperty.call(payload, 'metaJwtSecret') ||
+      Object.prototype.hasOwnProperty.call(payload, 'metajwtsecret')
+    ) {
+      setData.metajwtsecret = String(payload.metaJwtSecret ?? payload.metajwtsecret ?? '').trim();
+    }
+    if (
       Object.prototype.hasOwnProperty.call(payload, 'phoneNumber') ||
       Object.prototype.hasOwnProperty.call(payload, 'phonenumber')
     ) {
@@ -294,6 +343,13 @@ const updateUserCredentialsByUserId = async (req, res) => {
         whatsappId: user.whatsappid || "",
         whatsappToken: user.whatsapptoken || "",
         whatsappBusiness: user.whatsappbussiness || "",
+        metaAppId: user.metaappid || "",
+        metaAppSecret: user.metaappsecret || "",
+        metaRedirectUri: user.metaredirecturi || "",
+        metaUserAccessToken: user.metauseraccesstoken || "",
+        metaAdAccountId: user.metaadaccountid || "",
+        metaApiVersion: user.metaapiversion || "",
+        metaJwtSecret: user.metajwtsecret || "",
         phoneNumber: user.phonenumber || "",
         missedCallWebhook: user.missedcallwebhook || "",
         missedCallAutomationEnabled:
@@ -350,6 +406,13 @@ const getUserCredentialsByUserId = async (req, res) => {
         whatsappId: user.whatsappid || "",
         whatsappToken: user.whatsapptoken || "",
         whatsappBusiness: user.whatsappbussiness || "",
+        metaAppId: user.metaappid || "",
+        metaAppSecret: user.metaappsecret || "",
+        metaRedirectUri: user.metaredirecturi || "",
+        metaUserAccessToken: user.metauseraccesstoken || "",
+        metaAdAccountId: user.metaadaccountid || "",
+        metaApiVersion: user.metaapiversion || "",
+        metaJwtSecret: user.metajwtsecret || "",
         phoneNumber: user.phonenumber || "",
         missedCallWebhook: user.missedcallwebhook || "",
         missedCallAutomationEnabled:
