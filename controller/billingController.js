@@ -14,7 +14,10 @@ const {
   buildBillingAccessContext,
   createTrialSubscription,
   ensurePlanPricingSeed,
-  getLatestSubscriptionForCompany
+  getLatestSubscriptionForCompany,
+  resolveDocumentStatus,
+  resolveSubscriptionStatus,
+  resolveWorkspaceAccessState
 } = require("../utils/billing");
 
 const getIo = (req) => req.app.get("io");
@@ -173,6 +176,9 @@ const createSubscriptionOrder = async (req, res) => {
     }
 
     await ensureTrialForUser(user);
+    if (!user.companyId) {
+      return res.status(400).json({ message: "Workspace billing company is missing for this user" });
+    }
 
     const planCode = normalizePlan(req.body?.planCode);
     const billingCycle = normalizeCycle(req.body?.billingCycle);
@@ -241,7 +247,19 @@ const createSubscriptionOrder = async (req, res) => {
       }
     });
   } catch (error) {
-    return res.status(500).json({ message: "Failed to create subscription order", error: error.message });
+    console.error("createSubscriptionOrder failed", {
+      userId: req.user?.id || req.user?.userId || null,
+      role: req.user?.role || null,
+      planCode: req.body?.planCode || null,
+      billingCycle: req.body?.billingCycle || null,
+      message: error?.message || "Unknown error",
+      razorpayDescription: error?.error?.description || null,
+      stack: error?.stack || null
+    });
+    return res.status(500).json({
+      message: "Failed to create subscription order",
+      error: error?.error?.description || error?.message || "Unknown server error"
+    });
   }
 };
 
@@ -375,16 +393,57 @@ const listPayments = async (req, res) => {
 const listUsers = async (req, res) => {
   try {
     const users = await User.find({}).sort({ createdAt: -1 }).lean();
+    const companyIds = Array.from(
+      new Set(users.map((user) => String(user.companyId || "")).filter(Boolean))
+    );
     const companies = await Company.find({
-      _id: { $in: users.map((user) => user.companyId).filter(Boolean) }
+      _id: { $in: companyIds }
     }).lean();
     const companyById = new Map(companies.map((company) => [String(company._id), company]));
+    const subscriptions = await Subscription.find({
+      companyId: { $in: companyIds }
+    })
+      .sort({ createdAt: -1 })
+      .lean();
+    const latestSubscriptionByCompanyId = new Map();
+    for (const subscription of subscriptions) {
+      const key = String(subscription.companyId || "");
+      if (key && !latestSubscriptionByCompanyId.has(key)) {
+        latestSubscriptionByCompanyId.set(key, subscription);
+      }
+    }
+    const documents = await MetaDocument.find({
+      companyId: { $in: companyIds }
+    })
+      .sort({ createdAt: -1 })
+      .lean();
+    const documentsByCompanyId = documents.reduce((acc, doc) => {
+      const key = String(doc.companyId || "");
+      if (!key) return acc;
+      if (!acc[key]) acc[key] = [];
+      acc[key].push(doc);
+      return acc;
+    }, {});
 
-    const data = [];
-    for (const user of users) {
+    const data = users.map((user) => {
       const company = companyById.get(String(user.companyId || "")) || null;
-      const billing = await buildSubscriptionContext(user);
-      data.push({
+      const latestSubscription = latestSubscriptionByCompanyId.get(String(user.companyId || "")) || null;
+      const subscriptionBilling = resolveSubscriptionStatus(latestSubscription);
+      const documentStatus = resolveDocumentStatus(
+        documentsByCompanyId[String(user.companyId || "")] || [],
+        subscriptionBilling.planCode,
+        subscriptionBilling.subscriptionStatus
+      );
+      const workspaceAccessState = resolveWorkspaceAccessState({
+        subscriptionStatus: subscriptionBilling.subscriptionStatus,
+        documentStatus,
+        companyStatus: company?.status || "active",
+        planCode: subscriptionBilling.planCode
+      });
+      const canViewAnalytics = workspaceAccessState !== "disabled";
+      const canPerformActions = workspaceAccessState === "trialing" || workspaceAccessState === "active";
+
+      return {
         _id: user._id,
         username: user.username || "",
         email: user.email || "",
@@ -392,12 +451,12 @@ const listUsers = async (req, res) => {
         companyId: user.companyId || null,
         companyRole: user.companyRole || "user",
         companyName: company?.name || "",
-        planCode: billing.planCode,
-        subscriptionStatus: billing.subscriptionStatus,
-        documentStatus: billing.documentStatus,
-        workspaceAccessState: billing.workspaceAccessState,
-        canPerformActions: billing.canPerformActions,
-        canViewAnalytics: billing.canViewAnalytics,
+        planCode: subscriptionBilling.planCode,
+        subscriptionStatus: subscriptionBilling.subscriptionStatus,
+        documentStatus,
+        workspaceAccessState,
+        canPerformActions,
+        canViewAnalytics,
         twilioAccountSid: user.twilioaccountsid || "",
         twilioAuthToken: user.twilioauthtoken || "",
         twilioPhoneNumber: user.twiliophonenumber || user.phonenumber || "",
@@ -406,8 +465,8 @@ const listUsers = async (req, res) => {
         whatsappBusiness: user.whatsappbussiness || "",
         phoneNumber: user.phonenumber || "",
         missedCallWebhook: user.missedcallwebhook || ""
-      });
-    }
+      };
+    });
 
     return res.json({ success: true, data });
   } catch (error) {
