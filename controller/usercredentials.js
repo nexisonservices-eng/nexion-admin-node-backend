@@ -147,48 +147,21 @@ const getUserCredentials = async (req, res) => {
       }
     }
 
+    const billingOverride = user.role === "superadmin" ? buildSuperadminBilling() : null;
+    const formattedUser = await formatUserPayload(user, billingOverride);
+
     return res.json({
       success: true,
       data: {
-        userId: user._id,
-        role: user.role,
-        email: user.email || "",
-        companyId: user.companyId || null,
-        companyRole: user.companyRole || "user",
-        planCode: planContext.planCode,
-        featureFlags: planContext.featureFlags,
-        subscriptionStatus: planContext.subscriptionStatus,
-        twilioAccountSid: user.twilioaccountsid || "",
-        twilioAuthToken: user.twilioauthtoken || "",
-        twilioPhoneNumber: user.twiliophonenumber || user.phonenumber || "",
-        whatsappId: user.whatsappid || "",
-        whatsappToken: user.whatsapptoken || "",
-        whatsappBusiness: user.whatsappbussiness || "",
+        ...formattedUser,
         metaAppId: user.metaappid || "",
         metaAppSecret: user.metaappsecret || "",
         metaRedirectUri: user.metaredirecturi || "",
         metaUserAccessToken: user.metauseraccesstoken || "",
         metaAdAccountId: user.metaadaccountid || "",
         metaApiVersion: user.metaapiversion || "",
-        metaJwtSecret: user.metajwtsecret || "",
-        phoneNumber: user.phonenumber || "",
-        missedCallWebhook: user.missedcallwebhook || "",
-        missedCallAutomationEnabled:
-          typeof user.missedcallautomationenabled === "boolean"
-            ? user.missedcallautomationenabled
-            : true,
-        missedCallDelayMinutes:
-          Number.isFinite(Number(user.missedcalldelayminutes))
-            ? Number(user.missedcalldelayminutes)
-            : 5,
-        missedCallAutomationMode: normalizeAutomationMode(user.missedcallautomationmode),
-        missedCallNightHour: normalizeNightHour(user.missedcallnighthour),
-        missedCallNightMinute: normalizeNightMinute(user.missedcallnightminute),
-        missedCallTimezone: normalizeTimezone(user.missedcalltimezone),
-        missedCallTemplateName: user.missedcalltemplatename || "",
-        missedCallTemplateLanguage: user.missedcalltemplatelanguage || "en_US",
-        missedCallTemplateVariables: normalizeTemplateVariables(user.missedcalltemplatevariables),
-      },
+        metaJwtSecret: user.metajwtsecret || ""
+      }
     });
   } catch (error) {
     return res.status(500).json({
