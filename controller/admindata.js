@@ -1,11 +1,12 @@
 const User = require("../model/loginmodel");
 const mongoose = require("mongoose");
 
-// Super Admin updates Twilio/WhatsApp credentials for a selected Admin account.
+// Super Admin updates Twilio/WhatsApp credentials for a selected user/admin account.
 const admindata = async (req, res) => {
   try {
     const {
       adminId,
+      userId,
       twilioAccountSid,
       twilioAuthToken,
       twilioPhoneNumber,
@@ -54,17 +55,23 @@ const admindata = async (req, res) => {
     const normalizedMissedCallWebhook =
       typeof missedCallWebhook !== "undefined" ? missedCallWebhook : missedcallwebhook;
 
-    if (!adminId) {
-      return res.status(400).json({ message: "adminId is required" });
+    const targetUserId = adminId || userId;
+
+    if (!targetUserId) {
+      return res.status(400).json({ message: "adminId or userId is required" });
     }
 
-    if (!mongoose.Types.ObjectId.isValid(adminId)) {
-      return res.status(400).json({ message: "Invalid adminId" });
+    if (!mongoose.Types.ObjectId.isValid(targetUserId)) {
+      return res.status(400).json({ message: "Invalid target user id" });
     }
 
-    const targetAdmin = await User.findOne({ _id: adminId, role: "admin" });
-    if (!targetAdmin) {
-      return res.status(404).json({ message: "Admin user not found" });
+    const targetUser = await User.findById(targetUserId);
+    if (!targetUser) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    if (String(targetUser.role || "").toLowerCase() === "superadmin") {
+      return res.status(400).json({ message: "Superadmin credentials cannot be edited here" });
     }
 
     const updateData = {};
@@ -108,10 +115,10 @@ const admindata = async (req, res) => {
       return res.status(400).json({ message: "No credential fields provided to update" });
     }
 
-    const updatedUser = await User.findByIdAndUpdate(adminId, updateData, { new: true });
+    const updatedUser = await User.findByIdAndUpdate(targetUserId, updateData, { new: true });
 
     return res.status(200).json({
-      message: "Admin credentials updated successfully",
+      message: "User credentials updated successfully",
       user: {
         id: updatedUser._id,
         username: updatedUser.username,

@@ -3,20 +3,27 @@ const User = require("../model/loginmodel");
 const updateUser = async (req, res) => {
   try {
     const userId = req.params.id;
-    const { username, email, twilioData = {} } = req.body;
+    const { username, email, role, twilioData = {} } = req.body;
 
     const target = await User.findById(userId).select("role");
     if (!target) {
       return res.status(404).json({ message: "User not found" });
     }
 
-    if (target.role !== "admin") {
-      return res.status(400).json({ message: "Only admin accounts can be updated from this endpoint" });
+    if (target.role === "superadmin") {
+      return res.status(400).json({ message: "Superadmin accounts cannot be updated from this endpoint" });
     }
 
     const updateData = {};
     if (typeof username !== "undefined") updateData.username = username;
     if (typeof email !== "undefined") updateData.email = email;
+    if (typeof role !== "undefined") {
+      const normalizedRole = String(role || "").trim().toLowerCase();
+      if (!["user", "admin"].includes(normalizedRole)) {
+        return res.status(400).json({ message: "Role must be either user or admin" });
+      }
+      updateData.role = normalizedRole;
+    }
 
     // Accept both nested payload (twilioData) and top-level fields
     const normalizedTwilioAccountSid =
@@ -71,7 +78,7 @@ const updateUser = async (req, res) => {
     const updatedUser = await User.findByIdAndUpdate(userId, { $set: updateData }, { new: true });
 
     return res.status(200).json({
-      message: "Admin updated successfully",
+      message: "User updated successfully",
       user: {
         id: updatedUser._id,
         username: updatedUser.username,
