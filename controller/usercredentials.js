@@ -33,6 +33,63 @@ const maskSecret = (value) => {
   return `${"*".repeat(text.length - 4)}${text.slice(-4)}`;
 };
 
+const hasNonEmptyValue = (value) => String(value || "").trim().length > 0;
+
+const credentialFieldMap = {
+  twilioAccountSid: "twilioaccountsid",
+  twilioAuthToken: "twilioauthtoken",
+  twilioPhoneNumber: "twiliophonenumber",
+  whatsappId: "whatsappid",
+  whatsappToken: "whatsapptoken",
+  whatsappBusiness: "whatsappbussiness",
+  metaAppId: "metaappid",
+  metaAppSecret: "metaappsecret",
+  metaRedirectUri: "metaredirecturi",
+  metaUserAccessToken: "metauseraccesstoken",
+  metaAdAccountId: "metaadaccountid",
+  metaApiVersion: "metaapiversion",
+  metaJwtSecret: "metajwtsecret",
+  phoneNumber: "phonenumber",
+  missedCallWebhook: "missedcallwebhook"
+};
+
+const findCompanyAdminCredentialSource = async (user) => {
+  if (!user?.companyId) return null;
+
+  return User.findOne({
+    companyId: user.companyId,
+    _id: { $ne: user._id },
+    role: { $ne: "superadmin" },
+    $or: [{ companyRole: "admin" }, { role: "admin" }]
+  })
+    .sort({ companyRole: 1, createdAt: 1 })
+    .lean();
+};
+
+const mergeCredentialValue = (primary, fallback) => {
+  if (hasNonEmptyValue(primary)) return String(primary || "").trim();
+  if (hasNonEmptyValue(fallback)) return String(fallback || "").trim();
+  return "";
+};
+
+const buildCredentialSnapshot = async (user) => {
+  const inheritedSource = await findCompanyAdminCredentialSource(user);
+  const fromUser = user || {};
+  const fromInherited = inheritedSource || {};
+
+  const credentials = Object.fromEntries(
+    Object.entries(credentialFieldMap).map(([publicKey, dbKey]) => [
+      publicKey,
+      mergeCredentialValue(fromUser[dbKey], fromInherited[dbKey])
+    ])
+  );
+
+  return {
+    credentials,
+    inheritedSource
+  };
+};
+
 const phonesMatch = (a, b) => {
   const left = normalizePhone(a);
   const right = normalizePhone(b);
@@ -70,6 +127,7 @@ const buildSuperadminBilling = () => ({
 
 const formatUserPayload = async (user, billingOverride = null) => {
   const billing = billingOverride || (await buildSubscriptionContext(user));
+  const { credentials } = await buildCredentialSnapshot(user);
   return {
     userId: user._id,
     role: user.role,
@@ -79,14 +137,14 @@ const formatUserPayload = async (user, billingOverride = null) => {
     companyRole: user.companyRole || "user",
     companyName: user.companyName || "",
     ...billing,
-    twilioAccountSid: user.twilioaccountsid || "",
-    twilioAuthToken: user.twilioauthtoken || "",
-    twilioPhoneNumber: user.twiliophonenumber || user.phonenumber || "",
-    whatsappId: user.whatsappid || "",
-    whatsappToken: user.whatsapptoken || "",
-    whatsappBusiness: user.whatsappbussiness || "",
-    phoneNumber: user.phonenumber || "",
-    missedCallWebhook: user.missedcallwebhook || "",
+    twilioAccountSid: credentials.twilioAccountSid,
+    twilioAuthToken: credentials.twilioAuthToken,
+    twilioPhoneNumber: credentials.twilioPhoneNumber || credentials.phoneNumber,
+    whatsappId: credentials.whatsappId,
+    whatsappToken: credentials.whatsappToken,
+    whatsappBusiness: credentials.whatsappBusiness,
+    phoneNumber: credentials.phoneNumber,
+    missedCallWebhook: credentials.missedCallWebhook,
     missedCallAutomationEnabled:
       typeof user.missedcallautomationenabled === "boolean" ? user.missedcallautomationenabled : true,
     missedCallDelayMinutes:
@@ -149,18 +207,20 @@ const getUserCredentials = async (req, res) => {
 
     const billingOverride = user.role === "superadmin" ? buildSuperadminBilling() : null;
     const formattedUser = await formatUserPayload(user, billingOverride);
+    const { credentials, inheritedSource } = await buildCredentialSnapshot(user);
 
     return res.json({
       success: true,
       data: {
         ...formattedUser,
-        metaAppId: user.metaappid || "",
-        metaAppSecret: user.metaappsecret || "",
-        metaRedirectUri: user.metaredirecturi || "",
-        metaUserAccessToken: user.metauseraccesstoken || "",
-        metaAdAccountId: user.metaadaccountid || "",
-        metaApiVersion: user.metaapiversion || "",
-        metaJwtSecret: user.metajwtsecret || ""
+        metaAppId: credentials.metaAppId,
+        metaAppSecret: credentials.metaAppSecret,
+        metaRedirectUri: credentials.metaRedirectUri,
+        metaUserAccessToken: credentials.metaUserAccessToken,
+        metaAdAccountId: credentials.metaAdAccountId,
+        metaApiVersion: credentials.metaApiVersion,
+        metaJwtSecret: credentials.metaJwtSecret,
+        credentialOwnerUserId: inheritedSource?._id || user._id
       }
     });
   } catch (error) {
@@ -380,6 +440,8 @@ const getUserCredentialsByUserId = async (req, res) => {
     }
 
     const planContext = await buildPlanContext(user.companyId);
+    const { credentials, inheritedSource } = await buildCredentialSnapshot(user);
+
     return res.json({
       success: true,
       data: {
@@ -390,21 +452,22 @@ const getUserCredentialsByUserId = async (req, res) => {
         featureFlags: planContext.featureFlags,
         subscriptionStatus: planContext.subscriptionStatus,
         email: user.email || "",
-        twilioAccountSid: user.twilioaccountsid || "",
-        twilioAuthToken: user.twilioauthtoken || "",
-        twilioPhoneNumber: user.twiliophonenumber || user.phonenumber || "",
-        whatsappId: user.whatsappid || "",
-        whatsappToken: user.whatsapptoken || "",
-        whatsappBusiness: user.whatsappbussiness || "",
-        metaAppId: user.metaappid || "",
-        metaAppSecret: user.metaappsecret || "",
-        metaRedirectUri: user.metaredirecturi || "",
-        metaUserAccessToken: user.metauseraccesstoken || "",
-        metaAdAccountId: user.metaadaccountid || "",
-        metaApiVersion: user.metaapiversion || "",
-        metaJwtSecret: user.metajwtsecret || "",
-        phoneNumber: user.phonenumber || "",
-        missedCallWebhook: user.missedcallwebhook || "",
+        twilioAccountSid: credentials.twilioAccountSid,
+        twilioAuthToken: credentials.twilioAuthToken,
+        twilioPhoneNumber: credentials.twilioPhoneNumber || credentials.phoneNumber,
+        whatsappId: credentials.whatsappId,
+        whatsappToken: credentials.whatsappToken,
+        whatsappBusiness: credentials.whatsappBusiness,
+        metaAppId: credentials.metaAppId,
+        metaAppSecret: credentials.metaAppSecret,
+        metaRedirectUri: credentials.metaRedirectUri,
+        metaUserAccessToken: credentials.metaUserAccessToken,
+        metaAdAccountId: credentials.metaAdAccountId,
+        metaApiVersion: credentials.metaApiVersion,
+        metaJwtSecret: credentials.metaJwtSecret,
+        phoneNumber: credentials.phoneNumber,
+        missedCallWebhook: credentials.missedCallWebhook,
+        credentialOwnerUserId: inheritedSource?._id || user._id,
         missedCallAutomationEnabled:
           typeof user.missedcallautomationenabled === "boolean"
             ? user.missedcallautomationenabled
