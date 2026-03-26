@@ -301,6 +301,12 @@ const verifySubscriptionPayment = async (req, res) => {
       return res.status(404).json({ message: "Payment record not found" });
     }
 
+    if (String(payment.userId || "") !== String(requesterId)) {
+      return res.status(403).json({
+        message: "You are not allowed to verify this payment."
+      });
+    }
+
     payment.paymentId = paymentId;
     payment.status = "captured";
     payment.capturedAt = new Date();
@@ -463,6 +469,13 @@ const listUsers = async (req, res) => {
         whatsappId: user.whatsappid || "",
         whatsappToken: user.whatsapptoken || "",
         whatsappBusiness: user.whatsappbussiness || "",
+        metaAppId: user.metaappid || "",
+        metaAppSecret: user.metaappsecret || "",
+        metaRedirectUri: user.metaredirecturi || "",
+        metaUserAccessToken: user.metauseraccesstoken || "",
+        metaAdAccountId: user.metaadaccountid || "",
+        metaApiVersion: user.metaapiversion || "",
+        metaJwtSecret: user.metajwtsecret || "",
         phoneNumber: user.phonenumber || "",
         missedCallWebhook: user.missedcallwebhook || ""
       };
