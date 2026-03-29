@@ -1,7 +1,8 @@
 const Razorpay = require("razorpay");
 const Subscription = require("../model/subscription");
 const Payment = require("../model/payment");
-const { PLAN_FEATURES, PLAN_LIMITS } = require("../utils/planUtils");
+const { PLAN_LIMITS } = require("../utils/planUtils");
+const { resolveFeatureFlagsForPlan } = require("../utils/billing");
 
 const getRazorpayClient = () => {
   const key_id = process.env.RAZORPAY_KEY_ID || "";
@@ -62,7 +63,7 @@ const createSubscription = async (req, res) => {
       planCode: String(planCode).toLowerCase(),
       status: "pending",
       billingCycle: billingCycle || "monthly",
-      featureFlags: PLAN_FEATURES[String(planCode).toLowerCase()] || {},
+      featureFlags: await resolveFeatureFlagsForPlan(String(planCode).toLowerCase()),
       limits: PLAN_LIMITS[String(planCode).toLowerCase()] || {}
     });
 

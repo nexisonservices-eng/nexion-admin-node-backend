@@ -24,6 +24,10 @@ const PlanPricingSchema = new mongoose.Schema(
       default: "INR",
       uppercase: true,
       trim: true
+    },
+    features: {
+      type: [String],
+      default: []
     }
   },
   { timestamps: true }

@@ -8,8 +8,13 @@ const PlanPricing = require("../model/planPricing");
 const Subscription = require("../model/subscription");
 const UsageLog = require("../model/usageLog");
 const MetaDocument = require("../model/metaDocument");
+const CustomPackage = require("../model/customPackage");
 const {
   TRIAL_LIMITS,
+  FEATURE_LABEL_TO_FLAGS,
+  DEFAULT_PLAN_FEATURE_LABELS,
+  normalizeFeatureLabel,
+  buildFeatureFlagsFromLabels,
   addBillingCycle,
   buildBillingAccessContext,
   createTrialSubscription,
@@ -36,8 +41,21 @@ const getRazorpayClient = () => {
 const normalizePlan = (value) => String(value || "").trim().toLowerCase();
 const normalizeCycle = (value) =>
   String(value || "monthly").trim().toLowerCase() === "yearly" ? "yearly" : "monthly";
+const normalizeFeatureLabelsInput = (features = []) =>
+  Array.from(
+    new Set(
+      (Array.isArray(features) ? features : [])
+        .map((feature) => normalizeFeatureLabel(feature))
+        .filter((feature) => feature && FEATURE_LABEL_TO_FLAGS[feature])
+    )
+  );
 
 const toObjectIdString = (value) => (value ? String(value) : null);
+const getActorObjectIdOrNull = (req) => {
+  const actorId = req.user?.id || req.user?.userId || null;
+  if (!actorId) return null;
+  return mongoose.Types.ObjectId.isValid(actorId) ? actorId : null;
+};
 
 const ensureBillingWorkspace = async (user) => {
   if (user.companyId) return user.companyId;
@@ -128,6 +146,15 @@ const updatePlanPricing = async (req, res) => {
       if (!["basic", "growth", "enterprise"].includes(planCode)) {
         return res.status(400).json({ message: `Invalid planCode: ${item.planCode}` });
       }
+      const features = Array.isArray(item.features)
+        ? Array.from(
+            new Set(
+              item.features
+                .map((feature) => normalizeFeatureLabel(feature))
+                .filter((feature) => feature && FEATURE_LABEL_TO_FLAGS[feature])
+            )
+          )
+        : DEFAULT_PLAN_FEATURE_LABELS[planCode] || [];
       updates.push(
         PlanPricing.findOneAndUpdate(
           { planCode },
@@ -135,7 +162,8 @@ const updatePlanPricing = async (req, res) => {
             $set: {
               monthlyPrice: Number(item.monthlyPrice || 0),
               yearlyPrice: Number(item.yearlyPrice || 0),
-              currency: String(item.currency || "INR").trim().toUpperCase() || "INR"
+              currency: String(item.currency || "INR").trim().toUpperCase() || "INR",
+              features
             }
           },
           { upsert: true, new: true }
@@ -431,23 +459,30 @@ const listUsers = async (req, res) => {
       return acc;
     }, {});
 
-    const data = users.map((user) => {
+    const customPackages = await CustomPackage.find({
+      companyId: { $in: companyIds },
+      status: { $in: ["draft", "payment_link_created", "paid"] }
+    })
+      .sort({ updatedAt: -1, createdAt: -1 })
+      .lean();
+    const latestCustomByUserId = new Map();
+    customPackages.forEach((pkg) => {
+      const key = String(pkg.userId || "");
+      if (key && !latestCustomByUserId.has(key)) {
+        latestCustomByUserId.set(key, pkg);
+      }
+    });
+
+    const data = await Promise.all(users.map(async (user) => {
       const company = companyById.get(String(user.companyId || "")) || null;
       const latestSubscription = latestSubscriptionByCompanyId.get(String(user.companyId || "")) || null;
-      const subscriptionBilling = resolveSubscriptionStatus(latestSubscription);
-      const documentStatus = resolveDocumentStatus(
-        documentsByCompanyId[String(user.companyId || "")] || [],
-        subscriptionBilling.planCode,
-        subscriptionBilling.subscriptionStatus
-      );
-      const workspaceAccessState = resolveWorkspaceAccessState({
-        subscriptionStatus: subscriptionBilling.subscriptionStatus,
-        documentStatus,
-        companyStatus: company?.status || "active",
-        planCode: subscriptionBilling.planCode
+      const accessContext = await buildBillingAccessContext({
+        user,
+        company,
+        documents: documentsByCompanyId[String(user.companyId || "")] || [],
+        subscription: latestSubscription
       });
-      const canViewAnalytics = workspaceAccessState !== "disabled";
-      const canPerformActions = workspaceAccessState === "trialing" || workspaceAccessState === "active";
+      const latestCustomPackage = latestCustomByUserId.get(String(user._id || ""));
 
       return {
         _id: user._id,
@@ -457,12 +492,20 @@ const listUsers = async (req, res) => {
         companyId: user.companyId || null,
         companyRole: user.companyRole || "user",
         companyName: company?.name || "",
-        planCode: subscriptionBilling.planCode,
-        subscriptionStatus: subscriptionBilling.subscriptionStatus,
-        documentStatus,
-        workspaceAccessState,
-        canPerformActions,
-        canViewAnalytics,
+        planCode: accessContext.planCode,
+        subscriptionStatus: accessContext.subscriptionStatus,
+        documentStatus: accessContext.documentStatus,
+        workspaceAccessState: accessContext.workspaceAccessState,
+        canPerformActions: accessContext.canPerformActions,
+        canViewAnalytics: accessContext.canViewAnalytics,
+        featureFlags: accessContext.featureFlags || {},
+        effectiveFeatureLabels: Object.entries(accessContext.featureFlags || {})
+          .filter(([, enabled]) => Boolean(enabled))
+          .map(([flag]) => flag),
+        customFeatureLabels: accessContext.customFeatureLabels || [],
+        customPackageEndsAt: accessContext.customPackageEndsAt || null,
+        customPackageStatus: latestCustomPackage?.status || null,
+        activeCustomPackage: accessContext.activeCustomPackage || null,
         twilioAccountSid: user.twilioaccountsid || "",
         twilioAuthToken: user.twilioauthtoken || "",
         twilioPhoneNumber: user.twiliophonenumber || user.phonenumber || "",
@@ -479,7 +522,7 @@ const listUsers = async (req, res) => {
         phoneNumber: user.phonenumber || "",
         missedCallWebhook: user.missedcallwebhook || ""
       };
-    });
+    }));
 
     return res.json({ success: true, data });
   } catch (error) {
@@ -564,6 +607,252 @@ const recordInternalUsage = async (req, res) => {
   }
 };
 
+const saveCustomPackageDraft = async (req, res) => {
+  try {
+    const actorId = getActorObjectIdOrNull(req);
+    const { userId } = req.params;
+    if (!userId || !mongoose.Types.ObjectId.isValid(userId)) {
+      return res.status(400).json({ message: "Valid userId is required" });
+    }
+
+    const targetUser = await User.findById(userId);
+    if (!targetUser) return res.status(404).json({ message: "User not found" });
+    if (String(targetUser.role || "").toLowerCase() === "superadmin") {
+      return res.status(400).json({ message: "Superadmin cannot have custom packages" });
+    }
+
+    if (!targetUser.companyId) {
+      await ensureBillingWorkspace(targetUser);
+    }
+
+    const billingCycle = normalizeCycle(req.body?.billingCycle);
+    const amount = Number(req.body?.amount || 0);
+    const currency = String(req.body?.currency || "INR").trim().toUpperCase() || "INR";
+    const featureLabels = normalizeFeatureLabelsInput(req.body?.featureLabels || req.body?.features);
+
+    if (!featureLabels.length) {
+      return res.status(400).json({ message: "Select at least one valid feature" });
+    }
+    if (!Number.isFinite(amount) || amount <= 0) {
+      return res.status(400).json({ message: "Amount must be greater than zero" });
+    }
+
+    const draft = await CustomPackage.findOneAndUpdate(
+      {
+        userId: targetUser._id,
+        companyId: targetUser.companyId,
+        status: { $in: ["draft", "payment_link_created"] }
+      },
+      {
+        $set: {
+          featureLabels,
+          amount,
+          currency,
+          billingCycle,
+          status: "draft",
+          startsAt: null,
+          endsAt: null,
+          razorpayPaymentLinkId: "",
+          razorpayPaymentLinkUrl: "",
+          razorpayOrderId: "",
+          razorpayPaymentId: "",
+          updatedBy: actorId
+        },
+        $setOnInsert: {
+          createdBy: actorId
+        }
+      },
+      { new: true, upsert: true }
+    );
+
+    emitEvent(req, "custom.package.updated", {
+      userId: String(targetUser._id),
+      companyId: String(targetUser.companyId || ""),
+      status: "draft"
+    });
+
+    return res.json({ success: true, message: "Custom package draft saved", data: draft });
+  } catch (error) {
+    return res.status(500).json({ message: "Failed to save custom package draft", error: error.message });
+  }
+};
+
+const createCustomPackagePaymentLink = async (req, res) => {
+  try {
+    const actorId = getActorObjectIdOrNull(req);
+    const razorpay = getRazorpayClient();
+    if (!razorpay) {
+      return res.status(500).json({ message: "Razorpay is not configured" });
+    }
+
+    const { userId } = req.params;
+    if (!userId || !mongoose.Types.ObjectId.isValid(userId)) {
+      return res.status(400).json({ message: "Valid userId is required" });
+    }
+
+    const targetUser = await User.findById(userId).lean();
+    if (!targetUser) return res.status(404).json({ message: "User not found" });
+
+    const draft = await CustomPackage.findOne({
+      userId: targetUser._id,
+      companyId: targetUser.companyId,
+      status: "draft"
+    }).sort({ updatedAt: -1 });
+
+    if (!draft) {
+      return res.status(400).json({ message: "No draft package found. Save draft first." });
+    }
+
+    const link = await razorpay.paymentLink.create({
+      amount: Math.round(Number(draft.amount || 0) * 100),
+      currency: draft.currency || "INR",
+      description: `Nexion custom package for ${targetUser.username || targetUser.email || "user"}`,
+      customer: {
+        name: targetUser.username || "Nexion User",
+        email: targetUser.email || undefined
+      },
+      notify: {
+        email: Boolean(targetUser.email),
+        sms: false
+      },
+      reminder_enable: true,
+      notes: {
+        customPackageId: String(draft._id),
+        userId: String(targetUser._id),
+        companyId: String(targetUser.companyId || ""),
+        billingCycle: draft.billingCycle,
+        kind: "custom_package"
+      }
+    });
+
+    draft.status = "payment_link_created";
+    draft.razorpayPaymentLinkId = String(link.id || "");
+    draft.razorpayPaymentLinkUrl = String(link.short_url || link.reference_id || "");
+    draft.updatedBy = actorId;
+    await draft.save();
+
+    emitEvent(req, "custom.package.link.created", {
+      userId: String(targetUser._id),
+      companyId: String(targetUser.companyId || ""),
+      customPackageId: String(draft._id)
+    });
+
+    return res.json({
+      success: true,
+      message: "Payment link created",
+      data: {
+        customPackageId: draft._id,
+        paymentLinkId: link.id,
+        paymentLinkUrl: link.short_url || null,
+        amount: draft.amount,
+        currency: draft.currency,
+        billingCycle: draft.billingCycle
+      }
+    });
+  } catch (error) {
+    return res.status(500).json({ message: "Failed to create payment link", error: error.message });
+  }
+};
+
+const verifyCustomPackagePayment = async (req, res) => {
+  try {
+    const actorId = getActorObjectIdOrNull(req);
+    const razorpay = getRazorpayClient();
+    if (!razorpay) {
+      return res.status(500).json({ message: "Razorpay is not configured" });
+    }
+
+    const customPackageId = String(req.body?.customPackageId || "").trim();
+    const paymentLinkId = String(req.body?.paymentLinkId || "").trim();
+    if (!customPackageId || !mongoose.Types.ObjectId.isValid(customPackageId) || !paymentLinkId) {
+      return res.status(400).json({ message: "customPackageId and paymentLinkId are required" });
+    }
+
+    const pkg = await CustomPackage.findById(customPackageId);
+    if (!pkg) return res.status(404).json({ message: "Custom package not found" });
+
+    const link = await razorpay.paymentLink.fetch(paymentLinkId);
+    if (!link || String(link.status || "").toLowerCase() !== "paid") {
+      return res.status(400).json({ message: "Payment link is not paid yet" });
+    }
+
+    const paymentId = Array.isArray(link.payments) && link.payments.length > 0 ? link.payments[0] : "";
+    const now = new Date();
+
+    pkg.status = "paid";
+    pkg.startsAt = now;
+    pkg.endsAt = addBillingCycle(now, pkg.billingCycle);
+    pkg.razorpayPaymentLinkId = paymentLinkId;
+    pkg.razorpayPaymentId = String(paymentId || "");
+    pkg.updatedBy = actorId;
+    await pkg.save();
+
+    emitEvent(req, "custom.package.activated", {
+      userId: String(pkg.userId || ""),
+      companyId: String(pkg.companyId || ""),
+      customPackageId: String(pkg._id)
+    });
+    emitEvent(req, "user.features.updated", {
+      userId: String(pkg.userId || ""),
+      companyId: String(pkg.companyId || "")
+    });
+
+    return res.json({
+      success: true,
+      message: "Custom package payment verified",
+      data: {
+        customPackageId: pkg._id,
+        status: pkg.status,
+        startsAt: pkg.startsAt,
+        endsAt: pkg.endsAt,
+        featureLabels: pkg.featureLabels
+      }
+    });
+  } catch (error) {
+    return res.status(500).json({ message: "Failed to verify custom package payment", error: error.message });
+  }
+};
+
+const resetCustomPackageAccess = async (req, res) => {
+  try {
+    const actorId = getActorObjectIdOrNull(req);
+    const { userId } = req.params;
+    if (!userId || !mongoose.Types.ObjectId.isValid(userId)) {
+      return res.status(400).json({ message: "Valid userId is required" });
+    }
+
+    const targetUser = await User.findById(userId).lean();
+    if (!targetUser) return res.status(404).json({ message: "User not found" });
+
+    await CustomPackage.updateMany(
+      {
+        userId: targetUser._id,
+        companyId: targetUser.companyId,
+        status: { $in: ["draft", "payment_link_created", "paid"] }
+      },
+      {
+        $set: {
+          status: "cancelled",
+          updatedBy: actorId
+        }
+      }
+    );
+
+    emitEvent(req, "custom.package.reset", {
+      userId: String(targetUser._id),
+      companyId: String(targetUser.companyId || "")
+    });
+    emitEvent(req, "user.features.updated", {
+      userId: String(targetUser._id),
+      companyId: String(targetUser.companyId || "")
+    });
+
+    return res.json({ success: true, message: "User custom access reset to plan defaults" });
+  } catch (error) {
+    return res.status(500).json({ message: "Failed to reset custom access", error: error.message });
+  }
+};
+
 module.exports = {
   buildSubscriptionContext,
   createSubscriptionOrder,
@@ -574,6 +863,10 @@ module.exports = {
   listPublicPlanPricing,
   listSubscriptions,
   listUsers,
+  saveCustomPackageDraft,
+  createCustomPackagePaymentLink,
+  verifyCustomPackagePayment,
+  resetCustomPackageAccess,
   recordInternalUsage,
   updatePlanPricing,
   verifySubscriptionPayment

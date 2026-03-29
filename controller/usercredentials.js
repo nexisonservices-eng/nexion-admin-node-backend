@@ -103,14 +103,19 @@ const phonesMatch = (a, b) => {
 const buildSuperadminBilling = () => ({
   planCode: "enterprise",
   featureFlags: {
+    adsManager: true,
+    analytics: true,
+    metaConnect: true,
+    broadcastDashboard: true,
     broadcastMessaging: true,
+    templates: true,
+    contacts: true,
     teamInbox: true,
     voiceCampaign: true,
     inboundAutomation: true,
     ivr: true,
-    analytics: true,
+    callAnalytics: true,
     workflowAutomation: true,
-    adsManager: true,
     outboundVoice: true,
     missedCall: true
   },
@@ -379,7 +384,7 @@ const updateUserCredentialsByUserId = async (req, res) => {
 
     Object.assign(user, setData);
     await user.save();
-    const planContext = await buildPlanContext(user.companyId);
+    const planContext = await buildSubscriptionContext(user);
     return res.json({
       success: true,
       data: {
@@ -439,7 +444,7 @@ const getUserCredentialsByUserId = async (req, res) => {
       return res.status(404).json({ message: "User not found" });
     }
 
-    const planContext = await buildPlanContext(user.companyId);
+    const planContext = await buildSubscriptionContext(user);
     const { credentials, inheritedSource } = await buildCredentialSnapshot(user);
 
     return res.json({

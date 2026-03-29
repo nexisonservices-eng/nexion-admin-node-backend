@@ -79,6 +79,17 @@ router.post("/internal/ivr/log", requireInternalApiKey, ivrLogs.recordConversati
 
 router.get("/api/getadmin", protect, requireSuperAdmin, getAdmins);
 router.get("/api/admin/users", protect, requireSuperAdmin, billingController.listUsers);
+router.post("/api/admin/users/:userId/custom-package/draft", protect, requireSuperAdmin, billingController.saveCustomPackageDraft);
+router.post("/api/admin/users/:userId/custom-package/payment-link", protect, requireSuperAdmin, billingController.createCustomPackagePaymentLink);
+router.post("/api/admin/custom-package/payments/verify", protect, requireSuperAdmin, billingController.verifyCustomPackagePayment);
+router.post("/api/admin/users/:userId/custom-package/reset", protect, requireSuperAdmin, billingController.resetCustomPackageAccess);
+router.post(
+  "/api/admin/users/:userId/meta-documents",
+  protect,
+  requireSuperAdmin,
+  upload.single("file"),
+  metaDocuments.uploadMetaDocumentAdmin
+);
 router.get("/api/admin/plan-pricing", protect, requireSuperAdmin, billingController.listAdminPlanPricing);
 router.put("/api/admin/plan-pricing", protect, requireSuperAdmin, billingController.updatePlanPricing);
 router.get("/api/admin/payments", protect, requireSuperAdmin, billingController.listPayments);

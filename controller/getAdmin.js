@@ -19,8 +19,8 @@ const getAdmins = async (req, res) => {
       if (key && !latestByCompany.has(key)) latestByCompany.set(key, sub);
     });
 
-    const formattedUsers = users.map((u) => ({
-      ...(resolveSubscriptionStatus(latestByCompany.get(String(u.companyId || ""))) || {}),
+    const formattedUsers = await Promise.all(users.map(async (u) => ({
+      ...((await resolveSubscriptionStatus(latestByCompany.get(String(u.companyId || "")))) || {}),
       _id: u._id,
       username: u.username,
       email: u.email,
@@ -43,7 +43,7 @@ const getAdmins = async (req, res) => {
       metaJwtSecret: u.metajwtsecret || "",
       phoneNumber: u.phonenumber || "",
       missedCallWebhook: u.missedcallwebhook || "",
-    }));
+    })));
 
     return res.status(200).json({ users: formattedUsers });
   } catch (err) {

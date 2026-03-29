@@ -1,4 +1,6 @@
 const MetaDocument = require("../model/metaDocument");
+const User = require("../model/loginmodel");
+const Company = require("../model/company");
 const { cloudinary, configureCloudinary, isCloudinaryConfigured } = require("../config/cloudinary");
 
 const emitDocumentEvents = (req, payload = {}) => {
@@ -50,6 +52,65 @@ const uploadMetaDocument = async (req, res) => {
         emitDocumentEvents(req, {
           companyId: String(req.user.companyId || ""),
           userId: String(req.user.id || ""),
+          documentStatus: "pending"
+        });
+
+        res.status(201).json({ success: true, data: doc });
+      }
+    );
+
+    uploadResult.end(req.file.buffer);
+  } catch (error) {
+    res.status(500).json({ message: "Meta document upload failed", error: error.message });
+  }
+};
+
+const uploadMetaDocumentAdmin = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { docType } = req.body;
+
+    if (!userId) return res.status(400).json({ message: "userId is required" });
+    if (!docType) return res.status(400).json({ message: "docType is required" });
+    if (!req.file) return res.status(400).json({ message: "Document file is required" });
+
+    const targetUser = await User.findById(userId).lean();
+    if (!targetUser) return res.status(404).json({ message: "User not found" });
+    if (!targetUser.companyId) return res.status(400).json({ message: "User company is missing" });
+
+    const company = await Company.findById(targetUser.companyId).lean();
+    if (!company) return res.status(404).json({ message: "Company not found for user" });
+
+    if (!isCloudinaryConfigured()) {
+      return res.status(500).json({ message: "Cloudinary is not configured" });
+    }
+
+    configureCloudinary();
+    const folder = company?.folderRoot
+      ? `${company.folderRoot}/documents`
+      : `technova/${company?.slug || "company"}_${company?._id}/documents`;
+
+    const uploadResult = await cloudinary.uploader.upload_stream(
+      { folder, resource_type: "auto" },
+      async (error, result) => {
+        if (error) {
+          return res.status(500).json({
+            message: "Cloudinary upload failed",
+            error: error.message || "Upload error"
+          });
+        }
+
+        const doc = await MetaDocument.create({
+          companyId: targetUser.companyId,
+          userId: targetUser._id,
+          docType,
+          url: result.secure_url,
+          status: "pending"
+        });
+
+        emitDocumentEvents(req, {
+          companyId: String(targetUser.companyId || ""),
+          userId: String(targetUser._id || ""),
           documentStatus: "pending"
         });
 
@@ -118,6 +179,7 @@ const approveMetaDocument = async (req, res) => {
 
 module.exports = {
   uploadMetaDocument,
+  uploadMetaDocumentAdmin,
   listMetaDocuments,
   approveMetaDocument,
   listMetaDocumentsAdmin

@@ -1,7 +1,8 @@
 const crypto = require("crypto");
 const Payment = require("../model/payment");
 const Subscription = require("../model/subscription");
-const { PLAN_FEATURES, PLAN_LIMITS } = require("../utils/planUtils");
+const { PLAN_LIMITS } = require("../utils/planUtils");
+const { resolveFeatureFlagsForPlan } = require("../utils/billing");
 
 const verifyRazorpaySignature = (payload, signature) => {
   const secret = process.env.RAZORPAY_WEBHOOK_SECRET || "";
@@ -43,14 +44,14 @@ const razorpayWebhook = async (req, res) => {
     );
 
     if (status === "captured" && notes?.companyId) {
+      const featureFlags = await resolveFeatureFlagsForPlan(String(notes.planCode || "basic").toLowerCase());
       await Subscription.findOneAndUpdate(
         { companyId: notes.companyId },
         {
           status: "active",
           planCode: String(notes.planCode || "basic").toLowerCase(),
           billingCycle: notes.billingCycle || "monthly",
-          featureFlags:
-            PLAN_FEATURES[String(notes.planCode || "basic").toLowerCase()] || {},
+          featureFlags,
           limits:
             PLAN_LIMITS[String(notes.planCode || "basic").toLowerCase()] || {}
         },

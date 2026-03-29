@@ -1,6 +1,7 @@
 const PlanPricing = require("../model/planPricing");
 const Subscription = require("../model/subscription");
 const MetaDocument = require("../model/metaDocument");
+const CustomPackage = require("../model/customPackage");
 
 const TRIAL_DAYS = 3;
 const TRIAL_LIMITS = {
@@ -8,61 +9,172 @@ const TRIAL_LIMITS = {
   voiceCalls: 20
 };
 
+const FEATURE_FLAG_DEFAULTS = {
+  adsManager: false,
+  analytics: false,
+  metaConnect: false,
+  broadcastDashboard: false,
+  teamInbox: false,
+  broadcastMessaging: false,
+  templates: false,
+  contacts: false,
+  voiceCampaign: false,
+  inboundAutomation: false,
+  ivr: false,
+  outboundVoice: false,
+  callAnalytics: false,
+  missedCall: false,
+  workflowAutomation: false
+};
+
+const FEATURE_LABEL_ALIASES = {
+  Inbound: "Inbound Calls / IVR",
+  Outbound: "Outbound Voice",
+  Missed: "Missed Call",
+  Email: "Email Automation"
+};
+
+const normalizeFeatureLabel = (label) => {
+  const normalized = String(label || "").trim();
+  return FEATURE_LABEL_ALIASES[normalized] || normalized;
+};
+
+const FEATURE_LABEL_TO_FLAGS = {
+  "Ads Manager": { adsManager: true },
+  Insights: { analytics: true },
+  "Connect Meta": { metaConnect: true },
+  "Broadcast Dashboard": { broadcastDashboard: true },
+  "Team Inbox": { teamInbox: true },
+  Broadcast: { broadcastMessaging: true },
+  Templates: { templates: true },
+  Contacts: { contacts: true },
+  "Voice Broadcast": { voiceCampaign: true },
+  "Inbound Calls / IVR": { inboundAutomation: true, ivr: true },
+  Outbound: { outboundVoice: true },
+  "Outbound Voice": { outboundVoice: true },
+  "Call Analytics": { callAnalytics: true },
+  Missed: { missedCall: true },
+  "Missed Call": { missedCall: true },
+  Email: { workflowAutomation: true },
+  "Email Automation": { workflowAutomation: true }
+};
+
+const FEATURE_CATALOG = {
+  metaAds: ["Ads Manager", "Insights", "Connect Meta"],
+  bulkMessage: ["Broadcast Dashboard", "Team Inbox", "Broadcast", "Templates", "Contacts"],
+  voice: ["Voice Broadcast", "Inbound Calls / IVR", "Outbound Voice", "Call Analytics"],
+  standalone: ["Missed Call", "Email Automation"]
+};
+
+const DEFAULT_PLAN_FEATURE_LABELS = {
+  basic: [
+    "Broadcast Dashboard",
+    "Team Inbox",
+    "Broadcast",
+    "Templates",
+    "Contacts",
+    "Voice Broadcast",
+    "Missed Call"
+  ],
+  growth: [
+    "Ads Manager",
+    "Insights",
+    "Connect Meta",
+    "Broadcast Dashboard",
+    "Team Inbox",
+    "Broadcast",
+    "Templates",
+    "Contacts",
+    "Voice Broadcast",
+    "Inbound Calls / IVR",
+    "Call Analytics",
+    "Missed Call",
+    "Email Automation"
+  ],
+  enterprise: [
+    "Ads Manager",
+    "Insights",
+    "Connect Meta",
+    "Broadcast Dashboard",
+    "Team Inbox",
+    "Broadcast",
+    "Templates",
+    "Contacts",
+    "Voice Broadcast",
+    "Inbound Calls / IVR",
+    "Outbound Voice",
+    "Call Analytics",
+    "Missed Call",
+    "Email Automation"
+  ]
+};
+
+const buildFeatureFlagsFromLabels = (labels = []) => {
+  const next = { ...FEATURE_FLAG_DEFAULTS };
+  const uniqueLabels = Array.from(
+    new Set(
+      (Array.isArray(labels) ? labels : [])
+        .map((label) => normalizeFeatureLabel(label))
+        .filter(Boolean)
+    )
+  );
+  uniqueLabels.forEach((label) => {
+    Object.assign(next, FEATURE_LABEL_TO_FLAGS[label] || {});
+  });
+  return next;
+};
+
+const mergeFeatureFlags = (baseFlags = {}, extraFlags = {}) => {
+  const merged = { ...FEATURE_FLAG_DEFAULTS, ...baseFlags };
+  Object.entries(extraFlags || {}).forEach(([key, value]) => {
+    if (value) merged[key] = true;
+  });
+  return merged;
+};
+
 const PLAN_FEATURES = {
-  trial: {
-    missedCall: true,
-    teamInbox: true,
-    broadcastMessaging: true,
-    voiceCampaign: true,
-    inboundAutomation: true,
-    ivr: true,
-    analytics: true,
-    workflowAutomation: true,
-    adsManager: true,
-    outboundVoice: false
-  },
-  basic: {
-    missedCall: true,
-    teamInbox: true,
-    broadcastMessaging: true,
-    voiceCampaign: true,
-    inboundAutomation: false,
-    ivr: false,
-    analytics: false,
-    workflowAutomation: false,
-    adsManager: false,
-    outboundVoice: false
-  },
-  growth: {
-    missedCall: true,
-    teamInbox: true,
-    broadcastMessaging: true,
-    voiceCampaign: true,
-    inboundAutomation: true,
-    ivr: true,
-    analytics: true,
-    workflowAutomation: true,
-    adsManager: true,
-    outboundVoice: false
-  },
-  enterprise: {
-    missedCall: true,
-    teamInbox: true,
-    broadcastMessaging: true,
-    voiceCampaign: true,
-    inboundAutomation: true,
-    ivr: true,
-    analytics: true,
-    workflowAutomation: true,
-    adsManager: true,
-    outboundVoice: true
-  }
+  trial: buildFeatureFlagsFromLabels([
+    "Ads Manager",
+    "Insights",
+    "Connect Meta",
+    "Broadcast Dashboard",
+    "Team Inbox",
+    "Broadcast",
+    "Templates",
+    "Contacts",
+    "Voice Broadcast",
+    "Inbound Calls / IVR",
+    "Call Analytics",
+    "Missed Call",
+    "Email Automation"
+  ]),
+  basic: buildFeatureFlagsFromLabels(DEFAULT_PLAN_FEATURE_LABELS.basic),
+  growth: buildFeatureFlagsFromLabels(DEFAULT_PLAN_FEATURE_LABELS.growth),
+  enterprise: buildFeatureFlagsFromLabels(DEFAULT_PLAN_FEATURE_LABELS.enterprise)
 };
 
 const DEFAULT_PRICING = [
-  { planCode: "basic", monthlyPrice: 3999, yearlyPrice: 47988, currency: "INR" },
-  { planCode: "growth", monthlyPrice: 6999, yearlyPrice: 83988, currency: "INR" },
-  { planCode: "enterprise", monthlyPrice: 0, yearlyPrice: 0, currency: "INR" }
+  {
+    planCode: "basic",
+    monthlyPrice: 3999,
+    yearlyPrice: 47988,
+    currency: "INR",
+    features: DEFAULT_PLAN_FEATURE_LABELS.basic
+  },
+  {
+    planCode: "growth",
+    monthlyPrice: 6999,
+    yearlyPrice: 83988,
+    currency: "INR",
+    features: DEFAULT_PLAN_FEATURE_LABELS.growth
+  },
+  {
+    planCode: "enterprise",
+    monthlyPrice: 0,
+    yearlyPrice: 0,
+    currency: "INR",
+    features: DEFAULT_PLAN_FEATURE_LABELS.enterprise
+  }
 ];
 
 const addDays = (date, days) => {
@@ -83,12 +195,36 @@ const addBillingCycle = (date, billingCycle) => {
 
 const ensurePlanPricingSeed = async () => {
   for (const row of DEFAULT_PRICING) {
-    await PlanPricing.findOneAndUpdate(
-      { planCode: row.planCode },
-      { $setOnInsert: row },
-      { upsert: true, new: true }
-    );
+    const existing = await PlanPricing.findOne({ planCode: row.planCode });
+    if (!existing) {
+      await PlanPricing.create(row);
+      continue;
+    }
+    if (!Array.isArray(existing.features) || existing.features.length === 0) {
+      existing.features = row.features;
+      await existing.save();
+    }
   }
+};
+
+const getPlanFeatureLabels = async (planCode) => {
+  const normalizedPlanCode = String(planCode || "").toLowerCase();
+  if (normalizedPlanCode === "trial") return [];
+  await ensurePlanPricingSeed();
+  const pricing = await PlanPricing.findOne({ planCode: normalizedPlanCode }).lean();
+  if (Array.isArray(pricing?.features) && pricing.features.length > 0) {
+    return pricing.features.map((feature) => normalizeFeatureLabel(feature)).filter(Boolean);
+  }
+  return DEFAULT_PLAN_FEATURE_LABELS[normalizedPlanCode] || [];
+};
+
+const resolveFeatureFlagsForPlan = async (planCode) => {
+  const normalizedPlanCode = String(planCode || "trial").toLowerCase();
+  if (normalizedPlanCode === "trial") {
+    return PLAN_FEATURES.trial;
+  }
+  const labels = await getPlanFeatureLabels(normalizedPlanCode);
+  return buildFeatureFlagsFromLabels(labels);
 };
 
 const buildUsageSnapshot = (subscription) => ({
@@ -126,7 +262,7 @@ const createTrialSubscription = async ({ companyId, userId }) => {
   });
 };
 
-const resolveSubscriptionStatus = (subscription) => {
+const resolveSubscriptionStatus = async (subscription) => {
   if (!subscription) {
     return {
       planCode: "trial",
@@ -156,7 +292,7 @@ const resolveSubscriptionStatus = (subscription) => {
   return {
     planCode,
     subscriptionStatus: status || "payment_pending",
-    featureFlags: PLAN_FEATURES[planCode] || PLAN_FEATURES.trial,
+    featureFlags: await resolveFeatureFlagsForPlan(planCode),
     trialStart: startsAt,
     trialEnd: planCode === "trial" ? endsAt : null,
     trialUsage: buildUsageSnapshot(subscription),
@@ -245,7 +381,7 @@ const buildWorkspaceAccessContext = ({
 const buildBillingAccessContext = async ({ user, company = null, documents = null, subscription = null }) => {
   const resolvedSubscription =
     subscription || (user?.companyId ? await getLatestSubscriptionForCompany(user.companyId) : null);
-  const billing = resolveSubscriptionStatus(resolvedSubscription);
+  const billing = await resolveSubscriptionStatus(resolvedSubscription);
 
   const resolvedDocuments =
     documents ||
@@ -259,16 +395,59 @@ const buildBillingAccessContext = async ({ user, company = null, documents = nul
     billing.subscriptionStatus
   );
 
-  return buildWorkspaceAccessContext({
+  const now = new Date();
+  const activeCustomPackage = user?._id
+    ? await CustomPackage.findOne({
+        userId: user._id,
+        companyId: user.companyId || null,
+        status: "paid",
+        startsAt: { $lte: now },
+        endsAt: { $gte: now }
+      })
+        .sort({ endsAt: -1, createdAt: -1 })
+        .lean()
+    : null;
+  const customFeatureLabels = Array.isArray(activeCustomPackage?.featureLabels)
+    ? activeCustomPackage.featureLabels.map((label) => normalizeFeatureLabel(label)).filter(Boolean)
+    : [];
+  const customFeatureFlags = buildFeatureFlagsFromLabels(customFeatureLabels);
+
+  const workspaceContext = buildWorkspaceAccessContext({
     billing,
     documentStatus,
     companyStatus: company?.status || "active"
   });
+
+  return {
+    ...workspaceContext,
+    featureFlags: mergeFeatureFlags(workspaceContext.featureFlags, customFeatureFlags),
+    customFeatureLabels,
+    customPackageEndsAt: activeCustomPackage?.endsAt || null,
+    activeCustomPackage: activeCustomPackage
+      ? {
+          id: String(activeCustomPackage._id),
+          status: activeCustomPackage.status,
+          amount: Number(activeCustomPackage.amount || 0),
+          currency: activeCustomPackage.currency || "INR",
+          billingCycle: activeCustomPackage.billingCycle || "monthly",
+          startsAt: activeCustomPackage.startsAt || null,
+          endsAt: activeCustomPackage.endsAt || null
+        }
+      : null
+  };
 };
 
 module.exports = {
   TRIAL_DAYS,
   TRIAL_LIMITS,
+  FEATURE_CATALOG,
+  FEATURE_FLAG_DEFAULTS,
+  FEATURE_LABEL_ALIASES,
+  FEATURE_LABEL_TO_FLAGS,
+  DEFAULT_PLAN_FEATURE_LABELS,
+  buildFeatureFlagsFromLabels,
+  mergeFeatureFlags,
+  normalizeFeatureLabel,
   PLAN_FEATURES,
   addBillingCycle,
   buildBillingAccessContext,
@@ -277,7 +456,9 @@ module.exports = {
   createTrialSubscription,
   ensurePlanPricingSeed,
   getLatestSubscriptionForCompany,
+  getPlanFeatureLabels,
   resolveDocumentStatus,
+  resolveFeatureFlagsForPlan,
   resolveSubscriptionStatus,
   resolveWorkspaceAccessState
 };

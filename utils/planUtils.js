@@ -1,43 +1,5 @@
 const Subscription = require("../model/subscription");
-
-const PLAN_FEATURES = {
-  trial: {
-    broadcastMessaging: true,
-    voiceCampaign: true,
-    inboundCalls: false,
-    outboundCalls: false,
-    whatsappTemplates: true,
-    teamInbox: true,
-    adsManager: true
-  },
-  basic: {
-    broadcastMessaging: true,
-    voiceCampaign: true,
-    inboundCalls: false,
-    outboundCalls: false,
-    whatsappTemplates: true,
-    teamInbox: true,
-    adsManager: false
-  },
-  growth: {
-    broadcastMessaging: true,
-    voiceCampaign: true,
-    inboundCalls: true,
-    outboundCalls: false,
-    whatsappTemplates: true,
-    teamInbox: true,
-    adsManager: true
-  },
-  enterprise: {
-    broadcastMessaging: true,
-    voiceCampaign: true,
-    inboundCalls: true,
-    outboundCalls: true,
-    whatsappTemplates: true,
-    teamInbox: true,
-    adsManager: true
-  }
-};
+const { PLAN_FEATURES, resolveFeatureFlagsForPlan } = require("./billing");
 
 const PLAN_LIMITS = {
   trial: { voiceCalls: 20, whatsappMessages: 50, campaigns: 5 },
@@ -83,10 +45,7 @@ const buildPlanContext = async (companyId) => {
   }
 
   const planCode = String(subscription.planCode || "trial").toLowerCase();
-  const featureFlags =
-    subscription.featureFlags ||
-    PLAN_FEATURES[planCode] ||
-    PLAN_FEATURES.trial;
+  const featureFlags = await resolveFeatureFlagsForPlan(planCode);
   const limits =
     subscription.limits || PLAN_LIMITS[planCode] || PLAN_LIMITS.trial;
   const status = subscription.status || "active";
