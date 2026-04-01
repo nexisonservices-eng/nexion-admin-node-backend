@@ -94,6 +94,21 @@ const sendBulkEmail = async (req, res) => {
     const from = getEnv("SMTP_FROM", "MAIL_FROM", "EMAIL_FROM") || getEnv("SMTP_USER", "MAIL_USER", "EMAIL_USER");
     const report = [];
 
+    // Validate SMTP connectivity/auth first so production issues are surfaced clearly.
+    try {
+      await transporter.verify();
+    } catch (verifyError) {
+      return res.status(500).json({
+        message: "SMTP connection/auth verification failed",
+        error: verifyError.message || "Unknown SMTP verification error",
+        smtp: {
+          host: getEnv("SMTP_HOST", "MAIL_HOST", "EMAIL_HOST"),
+          port: Number(getEnv("SMTP_PORT", "MAIL_PORT", "EMAIL_PORT") || 587),
+          secure: String(getEnv("SMTP_SECURE", "MAIL_SECURE", "EMAIL_SECURE") || "false").toLowerCase() === "true"
+        }
+      });
+    }
+
     for (const recipient of normalizedRecipients) {
       const normalizedTemplateMessage = normalizeTemplateText(templateMessage);
       const personalizedText = applyTemplate(normalizedTemplateMessage, recipient);
