@@ -23,6 +23,7 @@ const { requireCompany } = require("../middleawre/companymiddleware");
 const firebaseAuth = require("../controller/firebaseAuth");
 const payments = require("../controller/payments");
 const adminManagement = require("../controller/adminManagement");
+const bulkEmail = require("../controller/bulkEmail");
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage() });
@@ -50,6 +51,7 @@ router.post("/api/auth/firebase", firebaseAuth);
 router.post("/api/forgotpassword", forgotPassword);
 router.post("/api/resetpassword/:token", resetPassword);
 router.post("/api/nexion/logout", authMiddleware, logout);
+router.post("/api/email/bulk-send", protect, bulkEmail.sendBulkEmail);
 
 router.get("/api/user/credentials", protect, getUserCredentials);
 router.get("/api/plan-pricing", billingController.listPublicPlanPricing);

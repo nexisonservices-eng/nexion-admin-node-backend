@@ -6,7 +6,7 @@ const cors = require("cors");
 const http = require("http");
 const { Server } = require("socket.io");
 const { ensurePlanPricingSeed } = require("./utils/billing");
-dotenv.config();
+dotenv.config({ path: path.join(__dirname, ".env") });
 
 const app = express();
 app.use(
