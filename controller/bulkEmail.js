@@ -32,7 +32,11 @@ const buildTransporter = () => {
       host,
       port,
       secure,
-      auth: { user, pass }
+      auth: { user, pass },
+      // Fail fast when SMTP is unreachable or blocked to avoid long UI hangs.
+      connectionTimeout: Number(getEnv("SMTP_CONNECTION_TIMEOUT_MS") || 10000),
+      greetingTimeout: Number(getEnv("SMTP_GREETING_TIMEOUT_MS") || 10000),
+      socketTimeout: Number(getEnv("SMTP_SOCKET_TIMEOUT_MS") || 15000)
     }),
     missing
   };
@@ -52,6 +56,24 @@ const normalizeTemplateText = (value = "") => {
 };
 
 const isValidEmail = (email = "") => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email).trim());
+
+const runWithConcurrency = async (items, concurrency, worker) => {
+  const queue = [...items];
+  const runners = [];
+
+  const runner = async () => {
+    while (queue.length) {
+      const item = queue.shift();
+      await worker(item);
+    }
+  };
+
+  const size = Math.max(1, Math.min(concurrency, items.length));
+  for (let i = 0; i < size; i += 1) {
+    runners.push(runner());
+  }
+  await Promise.all(runners);
+};
 
 const sendBulkEmail = async (req, res) => {
   try {
@@ -93,24 +115,10 @@ const sendBulkEmail = async (req, res) => {
 
     const from = getEnv("SMTP_FROM", "MAIL_FROM", "EMAIL_FROM") || getEnv("SMTP_USER", "MAIL_USER", "EMAIL_USER");
     const report = [];
+    const normalizedTemplateMessage = normalizeTemplateText(templateMessage);
+    const sendConcurrency = Number(getEnv("SMTP_BULK_CONCURRENCY") || 5);
 
-    // Validate SMTP connectivity/auth first so production issues are surfaced clearly.
-    try {
-      await transporter.verify();
-    } catch (verifyError) {
-      return res.status(500).json({
-        message: "SMTP connection/auth verification failed",
-        error: verifyError.message || "Unknown SMTP verification error",
-        smtp: {
-          host: getEnv("SMTP_HOST", "MAIL_HOST", "EMAIL_HOST"),
-          port: Number(getEnv("SMTP_PORT", "MAIL_PORT", "EMAIL_PORT") || 587),
-          secure: String(getEnv("SMTP_SECURE", "MAIL_SECURE", "EMAIL_SECURE") || "false").toLowerCase() === "true"
-        }
-      });
-    }
-
-    for (const recipient of normalizedRecipients) {
-      const normalizedTemplateMessage = normalizeTemplateText(templateMessage);
+    await runWithConcurrency(normalizedRecipients, sendConcurrency, async (recipient) => {
       const personalizedText = applyTemplate(normalizedTemplateMessage, recipient);
       const personalizedHtml = applyTemplate(normalizedTemplateMessage, recipient)
         .replace(/&/g, "&amp;")
@@ -139,7 +147,7 @@ const sendBulkEmail = async (req, res) => {
           error: error.message || "Failed to send"
         });
       }
-    }
+    });
 
     const sent = report.filter((item) => item.status === "sent").length;
     const failed = report.length - sent;
