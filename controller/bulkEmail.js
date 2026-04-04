@@ -1,4 +1,5 @@
 const nodemailer = require("nodemailer");
+const axios = require("axios");
 
 const getEnv = (...keys) => {
   for (const key of keys) {
@@ -105,6 +106,88 @@ const runWithConcurrency = async (items, concurrency, worker) => {
   await Promise.all(runners);
 };
 
+const fetchVerificationData = async (apiKey, email) => {
+  const endpoints = [
+    "https://emailvalidation.abstractapi.com/v1/",
+    "https://emailreputation.abstractapi.com/v1/"
+  ];
+
+  let hadUnauthorized = false;
+  let lastErrorMessage = "";
+
+  for (const endpoint of endpoints) {
+    try {
+      const response = await axios.get(endpoint, {
+        params: { api_key: apiKey, email },
+        timeout: Number(getEnv("EMAIL_VERIFY_TIMEOUT_MS") || 9000)
+      });
+      return { ok: true, data: response?.data || {} };
+    } catch (error) {
+      if (Number(error?.response?.status) === 401) {
+        hadUnauthorized = true;
+      }
+      lastErrorMessage = error?.message || "";
+    }
+  }
+
+  if (hadUnauthorized) {
+    return { ok: false, reason: "auth_failed", message: "Invalid verifier API key." };
+  }
+  return { ok: false, reason: "unavailable", message: lastErrorMessage || "Verification endpoint unavailable." };
+};
+
+const verifyEmailAddress = async (email) => {
+  const apiKey = getEnv("ABSTRACT_EMAIL_VERIFY_API_KEY");
+  if (!apiKey) {
+    return { canSend: true, reasonCode: "verification_not_configured", userMessage: "" };
+  }
+
+  try {
+    const verificationResponse = await fetchVerificationData(apiKey, email);
+    if (!verificationResponse.ok) {
+      if (verificationResponse.reason === "auth_failed") {
+        return {
+          canSend: false,
+          reasonCode: "verification_auth_failed",
+          userMessage: "Verifier API key is invalid."
+        };
+      }
+      return {
+        canSend: true,
+        reasonCode: "verification_unavailable",
+        userMessage: ""
+      };
+    }
+
+    const data = verificationResponse.data || {};
+    const deliverability = data?.email_deliverability || {};
+    const formatValid = typeof deliverability?.is_format_valid === "boolean"
+      ? deliverability.is_format_valid
+      : Boolean(data?.is_valid_format?.value);
+    const mxFound = typeof deliverability?.is_mx_valid === "boolean"
+      ? deliverability.is_mx_valid
+      : Boolean(data?.is_mx_found?.value);
+    const smtpValid = typeof deliverability?.is_smtp_valid === "boolean"
+      ? deliverability.is_smtp_valid
+      : data?.is_smtp_valid?.value;
+    const status = String(deliverability?.status || deliverability?.status_detail || data?.deliverability || "").toUpperCase();
+
+    if (!formatValid) {
+      return { canSend: false, reasonCode: "invalid_format", userMessage: "Invalid email format, cannot send." };
+    }
+    if (!mxFound) {
+      return { canSend: false, reasonCode: "invalid_domain", userMessage: "Email domain is invalid, cannot send." };
+    }
+    if (smtpValid === false || status.includes("UNDELIVERABLE") || status.includes("INVALID")) {
+      return { canSend: false, reasonCode: "invalid_mailbox", userMessage: "This email ID is invalid, cannot send." };
+    }
+
+    return { canSend: true, reasonCode: "deliverable", userMessage: "" };
+  } catch (error) {
+    return { canSend: true, reasonCode: "verification_error", userMessage: "" };
+  }
+};
+
 const sendBulkEmail = async (req, res) => {
   try {
     const { subject, templateMessage, recipients } = req.body || {};
@@ -147,8 +230,22 @@ const sendBulkEmail = async (req, res) => {
     const report = [];
     const normalizedTemplateMessage = normalizeTemplateText(templateMessage);
     const sendConcurrency = Number(getEnv("SMTP_BULK_CONCURRENCY") || 5);
+    const verifierKeyConfigured = Boolean(getEnv("ABSTRACT_EMAIL_VERIFY_API_KEY"));
 
     await runWithConcurrency(normalizedRecipients, sendConcurrency, async (recipient) => {
+      if (verifierKeyConfigured) {
+        const verification = await verifyEmailAddress(recipient.email);
+        if (!verification.canSend) {
+          report.push({
+            email: recipient.email,
+            status: "failed",
+            error: "Blocked before send",
+            userMessage: verification.userMessage || "This email ID is invalid, cannot send."
+          });
+          return;
+        }
+      }
+
       const personalizedText = applyTemplate(normalizedTemplateMessage, recipient);
       const personalizedHtml = applyTemplate(normalizedTemplateMessage, recipient)
         .replace(/&/g, "&amp;")
@@ -185,7 +282,9 @@ const sendBulkEmail = async (req, res) => {
 
     return res.status(200).json({
       message: `Bulk email processed. Accepted by SMTP: ${accepted}, Failed at send time: ${failed}`,
-      note: "Accepted by SMTP is not guaranteed delivered. Some recipients may bounce later.",
+      note: verifierKeyConfigured
+        ? "Pre-send verification is enabled. Accepted by SMTP is not guaranteed delivered."
+        : "Accepted by SMTP is not guaranteed delivered. Some recipients may bounce later.",
       total: report.length,
       sent: accepted,
       accepted,
