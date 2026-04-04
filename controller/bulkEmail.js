@@ -230,10 +230,18 @@ const sendBulkEmail = async (req, res) => {
     const report = [];
     const normalizedTemplateMessage = normalizeTemplateText(templateMessage);
     const sendConcurrency = Number(getEnv("SMTP_BULK_CONCURRENCY") || 5);
+    const verifierEnabled = String(getEnv("ENABLE_PRE_SEND_VERIFICATION") || "false").toLowerCase() === "true";
     const verifierKeyConfigured = Boolean(getEnv("ABSTRACT_EMAIL_VERIFY_API_KEY"));
 
+    if (verifierEnabled && !verifierKeyConfigured) {
+      return res.status(500).json({
+        message: "Pre-send verification is enabled but verifier key is missing.",
+        error: "Set ABSTRACT_EMAIL_VERIFY_API_KEY or disable ENABLE_PRE_SEND_VERIFICATION"
+      });
+    }
+
     await runWithConcurrency(normalizedRecipients, sendConcurrency, async (recipient) => {
-      if (verifierKeyConfigured) {
+      if (verifierEnabled && verifierKeyConfigured) {
         const verification = await verifyEmailAddress(recipient.email);
         if (!verification.canSend) {
           report.push({
@@ -282,7 +290,7 @@ const sendBulkEmail = async (req, res) => {
 
     return res.status(200).json({
       message: `Bulk email processed. Accepted by SMTP: ${accepted}, Failed at send time: ${failed}`,
-      note: verifierKeyConfigured
+      note: verifierEnabled && verifierKeyConfigured
         ? "Pre-send verification is enabled. Accepted by SMTP is not guaranteed delivered."
         : "Accepted by SMTP is not guaranteed delivered. Some recipients may bounce later.",
       total: report.length,
