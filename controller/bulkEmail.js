@@ -57,6 +57,36 @@ const normalizeTemplateText = (value = "") => {
 
 const isValidEmail = (email = "") => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email).trim());
 
+const classifyEmailSendError = (error) => {
+  const rawMessage = String(error?.message || "").toLowerCase();
+  const responseCode = Number(error?.responseCode || 0);
+  const errorCode = String(error?.code || "").toUpperCase();
+
+  if (
+    responseCode === 550 ||
+    rawMessage.includes("5.1.1") ||
+    rawMessage.includes("address not found") ||
+    rawMessage.includes("user unknown") ||
+    rawMessage.includes("mailbox unavailable")
+  ) {
+    return "This email is incorrect, cannot be sent.";
+  }
+
+  if (errorCode === "ENOTFOUND" || rawMessage.includes("domain") && rawMessage.includes("not found")) {
+    return "Email domain is invalid or unreachable.";
+  }
+
+  if (errorCode === "ETIMEDOUT" || rawMessage.includes("timeout")) {
+    return "SMTP server timeout while sending.";
+  }
+
+  if (responseCode === 554 || rawMessage.includes("rejected")) {
+    return "Email rejected by recipient server.";
+  }
+
+  return "Could not deliver this email.";
+};
+
 const runWithConcurrency = async (items, concurrency, worker) => {
   const queue = [...items];
   const runners = [];
@@ -144,18 +174,21 @@ const sendBulkEmail = async (req, res) => {
         report.push({
           email: recipient.email,
           status: "failed",
-          error: error.message || "Failed to send"
+          error: error.message || "Failed to send",
+          userMessage: classifyEmailSendError(error)
         });
       }
     });
 
-    const sent = report.filter((item) => item.status === "sent").length;
-    const failed = report.length - sent;
+    const accepted = report.filter((item) => item.status === "sent").length;
+    const failed = report.filter((item) => item.status === "failed").length;
 
     return res.status(200).json({
-      message: `Bulk email completed. Sent: ${sent}, Failed: ${failed}`,
+      message: `Bulk email processed. Accepted by SMTP: ${accepted}, Failed at send time: ${failed}`,
+      note: "Accepted by SMTP is not guaranteed delivered. Some recipients may bounce later.",
       total: report.length,
-      sent,
+      sent: accepted,
+      accepted,
       failed,
       report
     });
