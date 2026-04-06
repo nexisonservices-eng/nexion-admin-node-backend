@@ -23,6 +23,18 @@ const createTransporter = ({ host, port, secure, user, pass }) =>
     socketTimeout: Number(getEnv("SMTP_SOCKET_TIMEOUT_MS") || 15000)
   });
 
+const buildApiEmailProvider = () => {
+  const provider = String(getEnv("BULK_EMAIL_PROVIDER") || "").toLowerCase();
+  const resendApiKey = getEnv("RESEND_API_KEY");
+  if (provider === "resend" || resendApiKey) {
+    return {
+      type: "resend",
+      apiKey: resendApiKey
+    };
+  }
+  return null;
+};
+
 const buildTransporter = () => {
   const host = getEnv("SMTP_HOST", "MAIL_HOST", "EMAIL_HOST");
   const port = Number(getEnv("SMTP_PORT", "MAIL_PORT", "EMAIL_PORT") || 587);
@@ -128,6 +140,32 @@ const canTryGmailFallback = (config, error) => {
   const port = Number(config?.port || 0);
   const secure = Boolean(config?.secure);
   return host === "smtp.gmail.com" && port === 587 && !secure && (code === "ETIMEDOUT" || code === "ECONNREFUSED");
+};
+
+const sendWithResend = async ({ apiKey, from, recipient, subject, text, html }) => {
+  if (!apiKey) {
+    throw new Error("RESEND_API_KEY is missing");
+  }
+
+  const response = await axios.post(
+    "https://api.resend.com/emails",
+    {
+      from,
+      to: [recipient],
+      subject,
+      text,
+      html
+    },
+    {
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json"
+      },
+      timeout: Number(getEnv("RESEND_TIMEOUT_MS") || 15000)
+    }
+  );
+
+  return { messageId: response?.data?.id || null };
 };
 
 const fetchVerificationData = async (apiKey, email) => {
@@ -243,10 +281,11 @@ const sendBulkEmail = async (req, res) => {
       return res.status(400).json({ message: "No valid recipients found" });
     }
 
+    const emailApiProvider = buildApiEmailProvider();
     const { transporter, config, missing } = buildTransporter();
-    if (!transporter) {
+    if (!transporter && !emailApiProvider) {
       return res.status(500).json({
-        message: `SMTP is not configured. Missing: ${missing.join(", ")}. Set SMTP_HOST, SMTP_PORT, SMTP_SECURE, SMTP_USER, SMTP_PASS, SMTP_FROM`
+        message: `Email provider is not configured. Missing SMTP keys: ${missing.join(", ")}. Set SMTP_HOST, SMTP_PORT, SMTP_SECURE, SMTP_USER, SMTP_PASS, SMTP_FROM or configure BULK_EMAIL_PROVIDER=resend with RESEND_API_KEY`
       });
     }
 
@@ -256,7 +295,8 @@ const sendBulkEmail = async (req, res) => {
     const verifierEnabled = String(getEnv("ENABLE_PRE_SEND_VERIFICATION") || "false").toLowerCase() === "true";
     const verifierKeyConfigured = Boolean(getEnv("ABSTRACT_EMAIL_VERIFY_API_KEY"));
     let activeTransporter = transporter;
-    let transportLabel = `${config.host}:${config.port} secure=${config.secure}`;
+    let transportLabel = activeTransporter ? `${config.host}:${config.port} secure=${config.secure}` : "resend-api";
+    let useResendApi = emailApiProvider?.type === "resend";
 
     if (verifierEnabled && !verifierKeyConfigured) {
       return res.status(500).json({
@@ -266,23 +306,44 @@ const sendBulkEmail = async (req, res) => {
     }
 
     // Validate SMTP connectivity/auth first so production issues are surfaced clearly.
-    try {
-      await activeTransporter.verify();
-    } catch (verifyError) {
-      if (canTryGmailFallback(config, verifyError)) {
-        const fallbackTransporter = createTransporter({
-          host: config.host,
-          port: 465,
-          secure: true,
-          user: config.user,
-          pass: config.pass
-        });
-        try {
-          await fallbackTransporter.verify();
-          activeTransporter = fallbackTransporter;
-          transportLabel = `${config.host}:465 secure=true (fallback)`;
-        } catch (fallbackError) {
-          const meta = buildSmtpErrorMeta(fallbackError);
+    if (!useResendApi) {
+      try {
+        await activeTransporter.verify();
+      } catch (verifyError) {
+        if (canTryGmailFallback(config, verifyError)) {
+          const fallbackTransporter = createTransporter({
+            host: config.host,
+            port: 465,
+            secure: true,
+            user: config.user,
+            pass: config.pass
+          });
+          try {
+            await fallbackTransporter.verify();
+            activeTransporter = fallbackTransporter;
+            transportLabel = `${config.host}:465 secure=true (fallback)`;
+          } catch (fallbackError) {
+            if (emailApiProvider?.type === "resend" && emailApiProvider.apiKey) {
+              useResendApi = true;
+              transportLabel = "resend-api (smtp fallback failed)";
+            } else {
+              const meta = buildSmtpErrorMeta(fallbackError);
+              return res.status(500).json({
+                message: "SMTP connection/auth verification failed",
+                error: meta.message,
+                smtp: meta.smtp,
+                smtpCode: meta.code,
+                smtpResponseCode: meta.responseCode,
+                smtpCommand: meta.command,
+                hint: `${meta.hint} Tried fallback smtp.gmail.com:465 as well.`
+              });
+            }
+          }
+        } else if (emailApiProvider?.type === "resend" && emailApiProvider.apiKey) {
+          useResendApi = true;
+          transportLabel = "resend-api (smtp verify failed)";
+        } else {
+          const meta = buildSmtpErrorMeta(verifyError);
           return res.status(500).json({
             message: "SMTP connection/auth verification failed",
             error: meta.message,
@@ -290,20 +351,9 @@ const sendBulkEmail = async (req, res) => {
             smtpCode: meta.code,
             smtpResponseCode: meta.responseCode,
             smtpCommand: meta.command,
-            hint: `${meta.hint} Tried fallback smtp.gmail.com:465 as well.`
+            hint: meta.hint
           });
         }
-      } else {
-      const meta = buildSmtpErrorMeta(verifyError);
-      return res.status(500).json({
-        message: "SMTP connection/auth verification failed",
-        error: meta.message,
-        smtp: meta.smtp,
-        smtpCode: meta.code,
-        smtpResponseCode: meta.responseCode,
-        smtpCommand: meta.command,
-        hint: meta.hint
-      });
       }
     }
 
@@ -329,13 +379,22 @@ const sendBulkEmail = async (req, res) => {
         .replace(/\n/g, "<br/>");
 
       try {
-        const info = await activeTransporter.sendMail({
-          from,
-          to: recipient.email,
-          subject: String(subject),
-          text: personalizedText,
-          html: personalizedHtml
-        });
+        const info = useResendApi
+          ? await sendWithResend({
+              apiKey: emailApiProvider?.apiKey,
+              from,
+              recipient: recipient.email,
+              subject: String(subject),
+              text: personalizedText,
+              html: personalizedHtml
+            })
+          : await activeTransporter.sendMail({
+              from,
+              to: recipient.email,
+              subject: String(subject),
+              text: personalizedText,
+              html: personalizedHtml
+            });
 
         report.push({
           email: recipient.email,
