@@ -75,6 +75,8 @@ const runWithConcurrency = async (items, concurrency, worker) => {
   await Promise.all(runners);
 };
 
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
 const classifyEmailSendError = (error) => {
   const rawMessage = String(error?.message || "").toLowerCase();
   const responseCode = Number(error?.responseCode || 0);
@@ -152,6 +154,26 @@ const sendWithFallback = async (primaryTransporter, mailOptions) => {
   }
 };
 
+const sendWithRetry = async (primaryTransporter, mailOptions) => {
+  const maxAttempts = Number(getEnv("SMTP_SEND_MAX_ATTEMPTS") || 3);
+  let lastError = null;
+
+  for (let attempt = 1; attempt <= Math.max(1, maxAttempts); attempt += 1) {
+    try {
+      return await sendWithFallback(primaryTransporter, mailOptions);
+    } catch (error) {
+      lastError = error;
+      if (!isRetryableSmtpError(error) || attempt >= maxAttempts) {
+        break;
+      }
+      // Small backoff for transient SMTP/network hiccups on live hosts.
+      await sleep(700 * attempt);
+    }
+  }
+
+  throw lastError || new Error("Failed to send mail after retries");
+};
+
 const sendBulkEmail = async (req, res) => {
   try {
     const { subject, templateMessage, recipients } = req.body || {};
@@ -193,7 +215,8 @@ const sendBulkEmail = async (req, res) => {
     const from = getEnv("SMTP_FROM", "MAIL_FROM", "EMAIL_FROM") || getEnv("SMTP_USER", "MAIL_USER", "EMAIL_USER");
     const report = [];
     const normalizedTemplateMessage = normalizeTemplateText(templateMessage);
-    const sendConcurrency = Number(getEnv("SMTP_BULK_CONCURRENCY") || 5);
+    // Lower default concurrency to improve reliability on constrained live hosts.
+    const sendConcurrency = Number(getEnv("SMTP_BULK_CONCURRENCY") || 1);
 
     await runWithConcurrency(normalizedRecipients, sendConcurrency, async (recipient) => {
       const personalizedText = applyTemplate(normalizedTemplateMessage, recipient);
@@ -204,7 +227,7 @@ const sendBulkEmail = async (req, res) => {
         .replace(/\n/g, "<br/>");
 
       try {
-        const { info, fallbackUsed } = await sendWithFallback(transporter, {
+        const { info, fallbackUsed } = await sendWithRetry(transporter, {
           from,
           to: recipient.email,
           subject: String(subject),
