@@ -1,4 +1,5 @@
 const nodemailer = require("nodemailer");
+const axios = require("axios");
 
 const getEnv = (...keys) => {
   for (const key of keys) {
@@ -40,6 +41,17 @@ const buildTransporter = () => {
     }),
     missing
   };
+};
+
+const buildEmailProvider = () => {
+  const provider = String(getEnv("BULK_EMAIL_PROVIDER") || "").toLowerCase();
+  const resendApiKey = getEnv("RESEND_API_KEY");
+
+  if (provider === "resend" && resendApiKey) {
+    return { type: "resend", apiKey: resendApiKey };
+  }
+
+  return { type: "smtp" };
 };
 
 const applyTemplate = (template, recipient) => {
@@ -108,6 +120,14 @@ const classifyEmailSendError = (error) => {
     return "SMTP username/password not accepted.";
   }
 
+  const status = Number(error?.response?.status || 0);
+  if (status === 401 || status === 403) {
+    return "Email provider API key is invalid or unauthorized.";
+  }
+  if (status === 422) {
+    return "Sender/recipient validation failed with email provider.";
+  }
+
   return "Could not deliver this email.";
 };
 
@@ -174,6 +194,29 @@ const sendWithRetry = async (primaryTransporter, mailOptions) => {
   throw lastError || new Error("Failed to send mail after retries");
 };
 
+const sendWithResend = async ({ apiKey, from, to, subject, text, html }) => {
+  if (!apiKey) {
+    throw new Error("RESEND_API_KEY is missing");
+  }
+
+  const response = await axios.post(
+    "https://api.resend.com/emails",
+    { from, to: [to], subject, text, html },
+    {
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json"
+      },
+      timeout: Number(getEnv("RESEND_TIMEOUT_MS") || 15000)
+    }
+  );
+
+  return {
+    messageId: response?.data?.id || null,
+    via: "resend-api"
+  };
+};
+
 const sendBulkEmail = async (req, res) => {
   try {
     const { subject, templateMessage, recipients } = req.body || {};
@@ -205,8 +248,9 @@ const sendBulkEmail = async (req, res) => {
       return res.status(400).json({ message: "No valid recipients found" });
     }
 
+    const provider = buildEmailProvider();
     const { transporter, missing } = buildTransporter();
-    if (!transporter) {
+    if (provider.type === "smtp" && !transporter) {
       return res.status(500).json({
         message: `SMTP is not configured. Missing: ${missing.join(", ")}. Set SMTP_HOST, SMTP_PORT, SMTP_SECURE, SMTP_USER, SMTP_PASS, SMTP_FROM`
       });
@@ -227,19 +271,35 @@ const sendBulkEmail = async (req, res) => {
         .replace(/\n/g, "<br/>");
 
       try {
-        const { info, fallbackUsed } = await sendWithRetry(transporter, {
-          from,
-          to: recipient.email,
-          subject: String(subject),
-          text: personalizedText,
-          html: personalizedHtml
-        });
+        let delivery;
+        if (provider.type === "resend") {
+          delivery = await sendWithResend({
+            apiKey: provider.apiKey,
+            from,
+            to: recipient.email,
+            subject: String(subject),
+            text: personalizedText,
+            html: personalizedHtml
+          });
+        } else {
+          const { info, fallbackUsed } = await sendWithRetry(transporter, {
+            from,
+            to: recipient.email,
+            subject: String(subject),
+            text: personalizedText,
+            html: personalizedHtml
+          });
+          delivery = {
+            messageId: info.messageId || null,
+            via: fallbackUsed ? "smtp-465-fallback" : "smtp-primary"
+          };
+        }
 
         report.push({
           email: recipient.email,
           status: "sent",
-          messageId: info.messageId || null,
-          via: fallbackUsed ? "smtp-465-fallback" : "smtp-primary"
+          messageId: delivery.messageId || null,
+          via: delivery.via
         });
       } catch (error) {
         report.push({
