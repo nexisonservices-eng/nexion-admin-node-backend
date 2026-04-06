@@ -75,6 +75,83 @@ const runWithConcurrency = async (items, concurrency, worker) => {
   await Promise.all(runners);
 };
 
+const classifyEmailSendError = (error) => {
+  const rawMessage = String(error?.message || "").toLowerCase();
+  const responseCode = Number(error?.responseCode || 0);
+  const errorCode = String(error?.code || "").toUpperCase();
+
+  if (
+    responseCode === 550 ||
+    rawMessage.includes("5.1.1") ||
+    rawMessage.includes("address not found") ||
+    rawMessage.includes("user unknown") ||
+    rawMessage.includes("mailbox unavailable")
+  ) {
+    return "This email is incorrect, cannot be sent.";
+  }
+
+  if (errorCode === "ENOTFOUND" || (rawMessage.includes("domain") && rawMessage.includes("not found"))) {
+    return "Email domain is invalid or unreachable.";
+  }
+
+  if (errorCode === "ETIMEDOUT" || rawMessage.includes("timeout")) {
+    return "SMTP timeout on live server. Retry in a moment.";
+  }
+
+  if (responseCode === 554 || rawMessage.includes("rejected")) {
+    return "Email rejected by recipient server.";
+  }
+
+  if (responseCode === 535 || rawMessage.includes("badcredentials")) {
+    return "SMTP username/password not accepted.";
+  }
+
+  return "Could not deliver this email.";
+};
+
+const isRetryableSmtpError = (error) => {
+  const code = String(error?.code || "").toUpperCase();
+  return code === "ETIMEDOUT" || code === "ECONNECTION" || code === "ECONNRESET" || code === "ECONNREFUSED";
+};
+
+const createAlternateGmailTransporter = () => {
+  const host = getEnv("SMTP_HOST", "MAIL_HOST", "EMAIL_HOST");
+  if (String(host || "").toLowerCase() !== "smtp.gmail.com") return null;
+
+  const user = getEnv("SMTP_USER", "MAIL_USER", "EMAIL_USER");
+  const pass = getEnv("SMTP_PASS", "MAIL_PASS", "EMAIL_PASS", "EMAIL_PASSWORD");
+  if (!user || !pass) return null;
+
+  return nodemailer.createTransport({
+    host,
+    port: 465,
+    secure: true,
+    auth: { user, pass },
+    connectionTimeout: Number(getEnv("SMTP_CONNECTION_TIMEOUT_MS") || 10000),
+    greetingTimeout: Number(getEnv("SMTP_GREETING_TIMEOUT_MS") || 10000),
+    socketTimeout: Number(getEnv("SMTP_SOCKET_TIMEOUT_MS") || 15000)
+  });
+};
+
+const sendWithFallback = async (primaryTransporter, mailOptions) => {
+  try {
+    const info = await primaryTransporter.sendMail(mailOptions);
+    return { info, fallbackUsed: false };
+  } catch (firstError) {
+    if (!isRetryableSmtpError(firstError)) {
+      throw firstError;
+    }
+
+    const alternate = createAlternateGmailTransporter();
+    if (!alternate) {
+      throw firstError;
+    }
+
+    const info = await alternate.sendMail(mailOptions);
+    return { info, fallbackUsed: true };
+  }
+};
+
 const sendBulkEmail = async (req, res) => {
   try {
     const { subject, templateMessage, recipients } = req.body || {};
@@ -127,7 +204,7 @@ const sendBulkEmail = async (req, res) => {
         .replace(/\n/g, "<br/>");
 
       try {
-        const info = await transporter.sendMail({
+        const { info, fallbackUsed } = await sendWithFallback(transporter, {
           from,
           to: recipient.email,
           subject: String(subject),
@@ -138,13 +215,15 @@ const sendBulkEmail = async (req, res) => {
         report.push({
           email: recipient.email,
           status: "sent",
-          messageId: info.messageId || null
+          messageId: info.messageId || null,
+          via: fallbackUsed ? "smtp-465-fallback" : "smtp-primary"
         });
       } catch (error) {
         report.push({
           email: recipient.email,
           status: "failed",
-          error: error.message || "Failed to send"
+          error: error.message || "Failed to send",
+          userMessage: classifyEmailSendError(error)
         });
       }
     });
@@ -154,6 +233,7 @@ const sendBulkEmail = async (req, res) => {
 
     return res.status(200).json({
       message: `Bulk email completed. Sent: ${sent}, Failed: ${failed}`,
+      note: "Accepted by SMTP is not guaranteed delivered. Some recipients may bounce later.",
       total: report.length,
       sent,
       failed,
