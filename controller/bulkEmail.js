@@ -33,7 +33,11 @@ const buildTransporter = () => {
       host,
       port,
       secure,
-      auth: { user, pass }
+      auth: { user, pass },
+      // Keep SMTP checks bounded so API can return diagnostics instead of hanging.
+      connectionTimeout: Number(getEnv("SMTP_CONNECTION_TIMEOUT_MS") || 10000),
+      greetingTimeout: Number(getEnv("SMTP_GREETING_TIMEOUT_MS") || 10000),
+      socketTimeout: Number(getEnv("SMTP_SOCKET_TIMEOUT_MS") || 15000)
     }),
     missing
   };
@@ -82,6 +86,36 @@ const classifyEmailSendError = (error) => {
   }
 
   return "Could not deliver this email.";
+};
+
+const buildSmtpErrorMeta = (error) => {
+  const code = String(error?.code || "").toUpperCase();
+  const responseCode = Number(error?.responseCode || 0) || null;
+  const command = String(error?.command || "");
+  const message = String(error?.message || "Unknown SMTP error");
+  const host = getEnv("SMTP_HOST", "MAIL_HOST", "EMAIL_HOST");
+  const port = Number(getEnv("SMTP_PORT", "MAIL_PORT", "EMAIL_PORT") || 587);
+  const secure = String(getEnv("SMTP_SECURE", "MAIL_SECURE", "EMAIL_SECURE") || "false").toLowerCase() === "true";
+
+  let hint = "Check SMTP username/password and provider restrictions.";
+  if (code === "ETIMEDOUT") {
+    hint = "SMTP timed out. Live server likely cannot reach smtp.gmail.com:587 (firewall/egress block).";
+  } else if (code === "ECONNREFUSED") {
+    hint = "SMTP connection refused. Port 587/465 may be blocked by hosting provider.";
+  } else if (code === "ENOTFOUND") {
+    hint = "SMTP host DNS lookup failed on live server.";
+  } else if (code === "EAUTH" || responseCode === 535) {
+    hint = "SMTP authentication failed. Use Gmail App Password and ensure 2-Step Verification is enabled.";
+  }
+
+  return {
+    code: code || null,
+    responseCode,
+    command: command || null,
+    message,
+    smtp: { host, port, secure },
+    hint
+  };
 };
 
 const fetchVerificationData = async (apiKey, email) => {
@@ -221,14 +255,15 @@ const sendBulkEmail = async (req, res) => {
     try {
       await transporter.verify();
     } catch (verifyError) {
+      const meta = buildSmtpErrorMeta(verifyError);
       return res.status(500).json({
         message: "SMTP connection/auth verification failed",
-        error: verifyError.message || "Unknown SMTP verification error",
-        smtp: {
-          host: getEnv("SMTP_HOST", "MAIL_HOST", "EMAIL_HOST"),
-          port: Number(getEnv("SMTP_PORT", "MAIL_PORT", "EMAIL_PORT") || 587),
-          secure: String(getEnv("SMTP_SECURE", "MAIL_SECURE", "EMAIL_SECURE") || "false").toLowerCase() === "true"
-        }
+        error: meta.message,
+        smtp: meta.smtp,
+        smtpCode: meta.code,
+        smtpResponseCode: meta.responseCode,
+        smtpCommand: meta.command,
+        hint: meta.hint
       });
     }
 
@@ -242,7 +277,7 @@ const sendBulkEmail = async (req, res) => {
             error: "Blocked before send",
             userMessage: verification.userMessage || "This email ID is invalid, cannot send."
           });
-          return;
+          continue;
         }
       }
 
@@ -268,11 +303,15 @@ const sendBulkEmail = async (req, res) => {
           messageId: info.messageId || null
         });
       } catch (error) {
+        const meta = buildSmtpErrorMeta(error);
         report.push({
           email: recipient.email,
           status: "failed",
-          error: error.message || "Failed to send",
-          userMessage: classifyEmailSendError(error)
+          error: meta.message || "Failed to send",
+          smtpCode: meta.code,
+          smtpResponseCode: meta.responseCode,
+          userMessage: classifyEmailSendError(error),
+          hint: meta.hint
         });
       }
     }
