@@ -217,6 +217,41 @@ const sendWithResend = async ({ apiKey, from, to, subject, text, html }) => {
   };
 };
 
+const getRetryAfterMs = (error) => {
+  const retryAfter = Number(error?.response?.headers?.["retry-after"] || 0);
+  if (Number.isFinite(retryAfter) && retryAfter > 0) {
+    return retryAfter * 1000;
+  }
+  return 0;
+};
+
+const isRetryableProviderError = (error) => {
+  const status = Number(error?.response?.status || 0);
+  return status === 429 || status >= 500;
+};
+
+const sendWithResendRetry = async (payload) => {
+  const maxAttempts = Number(getEnv("RESEND_SEND_MAX_ATTEMPTS") || 5);
+  const baseDelayMs = Number(getEnv("RESEND_RETRY_BASE_DELAY_MS") || 1200);
+  let lastError = null;
+
+  for (let attempt = 1; attempt <= Math.max(1, maxAttempts); attempt += 1) {
+    try {
+      return await sendWithResend(payload);
+    } catch (error) {
+      lastError = error;
+      if (!isRetryableProviderError(error) || attempt >= maxAttempts) {
+        break;
+      }
+      const retryAfterMs = getRetryAfterMs(error);
+      const backoffMs = retryAfterMs || baseDelayMs * attempt;
+      await sleep(backoffMs);
+    }
+  }
+
+  throw lastError || new Error("Failed to send with provider after retries");
+};
+
 const sendBulkEmail = async (req, res) => {
   try {
     const { subject, templateMessage, recipients } = req.body || {};
@@ -259,8 +294,10 @@ const sendBulkEmail = async (req, res) => {
     const from = getEnv("SMTP_FROM", "MAIL_FROM", "EMAIL_FROM") || getEnv("SMTP_USER", "MAIL_USER", "EMAIL_USER");
     const report = [];
     const normalizedTemplateMessage = normalizeTemplateText(templateMessage);
-    // Lower default concurrency to improve reliability on constrained live hosts.
-    const sendConcurrency = Number(getEnv("SMTP_BULK_CONCURRENCY") || 1);
+    // Provider calls can hit rate limits quickly; keep Resend safer by default.
+    const sendConcurrency = provider.type === "resend"
+      ? Number(getEnv("RESEND_BULK_CONCURRENCY") || 1)
+      : Number(getEnv("SMTP_BULK_CONCURRENCY") || 1);
 
     await runWithConcurrency(normalizedRecipients, sendConcurrency, async (recipient) => {
       const personalizedText = applyTemplate(normalizedTemplateMessage, recipient);
@@ -273,7 +310,7 @@ const sendBulkEmail = async (req, res) => {
       try {
         let delivery;
         if (provider.type === "resend") {
-          delivery = await sendWithResend({
+          delivery = await sendWithResendRetry({
             apiKey: provider.apiKey,
             from,
             to: recipient.email,
