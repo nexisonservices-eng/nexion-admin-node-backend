@@ -11,6 +11,18 @@ const getEnv = (...keys) => {
   return "";
 };
 
+const createTransporter = ({ host, port, secure, user, pass }) =>
+  nodemailer.createTransport({
+    host,
+    port,
+    secure,
+    auth: { user, pass },
+    // Keep SMTP checks bounded so API can return diagnostics instead of hanging.
+    connectionTimeout: Number(getEnv("SMTP_CONNECTION_TIMEOUT_MS") || 10000),
+    greetingTimeout: Number(getEnv("SMTP_GREETING_TIMEOUT_MS") || 10000),
+    socketTimeout: Number(getEnv("SMTP_SOCKET_TIMEOUT_MS") || 15000)
+  });
+
 const buildTransporter = () => {
   const host = getEnv("SMTP_HOST", "MAIL_HOST", "EMAIL_HOST");
   const port = Number(getEnv("SMTP_PORT", "MAIL_PORT", "EMAIL_PORT") || 587);
@@ -29,16 +41,8 @@ const buildTransporter = () => {
   }
 
   return {
-    transporter: nodemailer.createTransport({
-      host,
-      port,
-      secure,
-      auth: { user, pass },
-      // Keep SMTP checks bounded so API can return diagnostics instead of hanging.
-      connectionTimeout: Number(getEnv("SMTP_CONNECTION_TIMEOUT_MS") || 10000),
-      greetingTimeout: Number(getEnv("SMTP_GREETING_TIMEOUT_MS") || 10000),
-      socketTimeout: Number(getEnv("SMTP_SOCKET_TIMEOUT_MS") || 15000)
-    }),
+    transporter: createTransporter({ host, port, secure, user, pass }),
+    config: { host, port, secure, user, pass },
     missing
   };
 };
@@ -116,6 +120,14 @@ const buildSmtpErrorMeta = (error) => {
     smtp: { host, port, secure },
     hint
   };
+};
+
+const canTryGmailFallback = (config, error) => {
+  const host = String(config?.host || "").toLowerCase();
+  const code = String(error?.code || "").toUpperCase();
+  const port = Number(config?.port || 0);
+  const secure = Boolean(config?.secure);
+  return host === "smtp.gmail.com" && port === 587 && !secure && (code === "ETIMEDOUT" || code === "ECONNREFUSED");
 };
 
 const fetchVerificationData = async (apiKey, email) => {
@@ -231,7 +243,7 @@ const sendBulkEmail = async (req, res) => {
       return res.status(400).json({ message: "No valid recipients found" });
     }
 
-    const { transporter, missing } = buildTransporter();
+    const { transporter, config, missing } = buildTransporter();
     if (!transporter) {
       return res.status(500).json({
         message: `SMTP is not configured. Missing: ${missing.join(", ")}. Set SMTP_HOST, SMTP_PORT, SMTP_SECURE, SMTP_USER, SMTP_PASS, SMTP_FROM`
@@ -243,6 +255,8 @@ const sendBulkEmail = async (req, res) => {
     const normalizedTemplateMessage = normalizeTemplateText(templateMessage);
     const verifierEnabled = String(getEnv("ENABLE_PRE_SEND_VERIFICATION") || "false").toLowerCase() === "true";
     const verifierKeyConfigured = Boolean(getEnv("ABSTRACT_EMAIL_VERIFY_API_KEY"));
+    let activeTransporter = transporter;
+    let transportLabel = `${config.host}:${config.port} secure=${config.secure}`;
 
     if (verifierEnabled && !verifierKeyConfigured) {
       return res.status(500).json({
@@ -253,8 +267,33 @@ const sendBulkEmail = async (req, res) => {
 
     // Validate SMTP connectivity/auth first so production issues are surfaced clearly.
     try {
-      await transporter.verify();
+      await activeTransporter.verify();
     } catch (verifyError) {
+      if (canTryGmailFallback(config, verifyError)) {
+        const fallbackTransporter = createTransporter({
+          host: config.host,
+          port: 465,
+          secure: true,
+          user: config.user,
+          pass: config.pass
+        });
+        try {
+          await fallbackTransporter.verify();
+          activeTransporter = fallbackTransporter;
+          transportLabel = `${config.host}:465 secure=true (fallback)`;
+        } catch (fallbackError) {
+          const meta = buildSmtpErrorMeta(fallbackError);
+          return res.status(500).json({
+            message: "SMTP connection/auth verification failed",
+            error: meta.message,
+            smtp: meta.smtp,
+            smtpCode: meta.code,
+            smtpResponseCode: meta.responseCode,
+            smtpCommand: meta.command,
+            hint: `${meta.hint} Tried fallback smtp.gmail.com:465 as well.`
+          });
+        }
+      } else {
       const meta = buildSmtpErrorMeta(verifyError);
       return res.status(500).json({
         message: "SMTP connection/auth verification failed",
@@ -265,6 +304,7 @@ const sendBulkEmail = async (req, res) => {
         smtpCommand: meta.command,
         hint: meta.hint
       });
+      }
     }
 
     for (const recipient of normalizedRecipients) {
@@ -289,7 +329,7 @@ const sendBulkEmail = async (req, res) => {
         .replace(/\n/g, "<br/>");
 
       try {
-        const info = await transporter.sendMail({
+        const info = await activeTransporter.sendMail({
           from,
           to: recipient.email,
           subject: String(subject),
@@ -324,6 +364,7 @@ const sendBulkEmail = async (req, res) => {
       note: verifierEnabled && verifierKeyConfigured
         ? "Pre-send verification is enabled. Accepted by SMTP is not guaranteed delivered."
         : "Accepted by SMTP is not guaranteed delivered. Some recipients may bounce later.",
+      smtpTransport: transportLabel,
       total: report.length,
       sent: accepted,
       accepted,
