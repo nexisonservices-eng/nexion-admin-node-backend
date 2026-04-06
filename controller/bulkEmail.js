@@ -1,5 +1,4 @@
 const nodemailer = require("nodemailer");
-const axios = require("axios");
 
 const getEnv = (...keys) => {
   for (const key of keys) {
@@ -9,30 +8,6 @@ const getEnv = (...keys) => {
     }
   }
   return "";
-};
-
-const createTransporter = ({ host, port, secure, user, pass }) =>
-  nodemailer.createTransport({
-    host,
-    port,
-    secure,
-    auth: { user, pass },
-    // Keep SMTP checks bounded so API can return diagnostics instead of hanging.
-    connectionTimeout: Number(getEnv("SMTP_CONNECTION_TIMEOUT_MS") || 10000),
-    greetingTimeout: Number(getEnv("SMTP_GREETING_TIMEOUT_MS") || 10000),
-    socketTimeout: Number(getEnv("SMTP_SOCKET_TIMEOUT_MS") || 15000)
-  });
-
-const buildApiEmailProvider = () => {
-  const provider = String(getEnv("BULK_EMAIL_PROVIDER") || "").toLowerCase();
-  const resendApiKey = getEnv("RESEND_API_KEY");
-  if (provider === "resend" || resendApiKey) {
-    return {
-      type: "resend",
-      apiKey: resendApiKey
-    };
-  }
-  return null;
 };
 
 const buildTransporter = () => {
@@ -53,8 +28,16 @@ const buildTransporter = () => {
   }
 
   return {
-    transporter: createTransporter({ host, port, secure, user, pass }),
-    config: { host, port, secure, user, pass },
+    transporter: nodemailer.createTransport({
+      host,
+      port,
+      secure,
+      auth: { user, pass },
+      // Fail fast when SMTP is unreachable or blocked to avoid long UI hangs.
+      connectionTimeout: Number(getEnv("SMTP_CONNECTION_TIMEOUT_MS") || 10000),
+      greetingTimeout: Number(getEnv("SMTP_GREETING_TIMEOUT_MS") || 10000),
+      socketTimeout: Number(getEnv("SMTP_SOCKET_TIMEOUT_MS") || 15000)
+    }),
     missing
   };
 };
@@ -74,180 +57,22 @@ const normalizeTemplateText = (value = "") => {
 
 const isValidEmail = (email = "") => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email).trim());
 
-const classifyEmailSendError = (error) => {
-  const rawMessage = String(error?.message || "").toLowerCase();
-  const responseCode = Number(error?.responseCode || 0);
-  const errorCode = String(error?.code || "").toUpperCase();
+const runWithConcurrency = async (items, concurrency, worker) => {
+  const queue = [...items];
+  const runners = [];
 
-  if (
-    responseCode === 550 ||
-    rawMessage.includes("5.1.1") ||
-    rawMessage.includes("address not found") ||
-    rawMessage.includes("user unknown") ||
-    rawMessage.includes("mailbox unavailable")
-  ) {
-    return "This email is incorrect, cannot be sent.";
-  }
-
-  if (errorCode === "ENOTFOUND" || rawMessage.includes("domain") && rawMessage.includes("not found")) {
-    return "Email domain is invalid or unreachable.";
-  }
-
-  if (errorCode === "ETIMEDOUT" || rawMessage.includes("timeout")) {
-    return "SMTP server timeout while sending.";
-  }
-
-  if (responseCode === 554 || rawMessage.includes("rejected")) {
-    return "Email rejected by recipient server.";
-  }
-
-  return "Could not deliver this email.";
-};
-
-const buildSmtpErrorMeta = (error) => {
-  const code = String(error?.code || "").toUpperCase();
-  const responseCode = Number(error?.responseCode || 0) || null;
-  const command = String(error?.command || "");
-  const message = String(error?.message || "Unknown SMTP error");
-  const host = getEnv("SMTP_HOST", "MAIL_HOST", "EMAIL_HOST");
-  const port = Number(getEnv("SMTP_PORT", "MAIL_PORT", "EMAIL_PORT") || 587);
-  const secure = String(getEnv("SMTP_SECURE", "MAIL_SECURE", "EMAIL_SECURE") || "false").toLowerCase() === "true";
-
-  let hint = "Check SMTP username/password and provider restrictions.";
-  if (code === "ETIMEDOUT") {
-    hint = "SMTP timed out. Live server likely cannot reach smtp.gmail.com:587 (firewall/egress block).";
-  } else if (code === "ECONNREFUSED") {
-    hint = "SMTP connection refused. Port 587/465 may be blocked by hosting provider.";
-  } else if (code === "ENOTFOUND") {
-    hint = "SMTP host DNS lookup failed on live server.";
-  } else if (code === "EAUTH" || responseCode === 535) {
-    hint = "SMTP authentication failed. Use Gmail App Password and ensure 2-Step Verification is enabled.";
-  }
-
-  return {
-    code: code || null,
-    responseCode,
-    command: command || null,
-    message,
-    smtp: { host, port, secure },
-    hint
+  const runner = async () => {
+    while (queue.length) {
+      const item = queue.shift();
+      await worker(item);
+    }
   };
-};
 
-const canTryGmailFallback = (config, error) => {
-  const host = String(config?.host || "").toLowerCase();
-  const code = String(error?.code || "").toUpperCase();
-  const port = Number(config?.port || 0);
-  const secure = Boolean(config?.secure);
-  return host === "smtp.gmail.com" && port === 587 && !secure && (code === "ETIMEDOUT" || code === "ECONNREFUSED");
-};
-
-const sendWithResend = async ({ apiKey, from, recipient, subject, text, html }) => {
-  if (!apiKey) {
-    throw new Error("RESEND_API_KEY is missing");
+  const size = Math.max(1, Math.min(concurrency, items.length));
+  for (let i = 0; i < size; i += 1) {
+    runners.push(runner());
   }
-
-  const response = await axios.post(
-    "https://api.resend.com/emails",
-    {
-      from,
-      to: [recipient],
-      subject,
-      text,
-      html
-    },
-    {
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json"
-      },
-      timeout: Number(getEnv("RESEND_TIMEOUT_MS") || 15000)
-    }
-  );
-
-  return { messageId: response?.data?.id || null };
-};
-
-const fetchVerificationData = async (apiKey, email) => {
-  const endpoints = [
-    "https://emailvalidation.abstractapi.com/v1/",
-    "https://emailreputation.abstractapi.com/v1/"
-  ];
-
-  let hadUnauthorized = false;
-  let lastErrorMessage = "";
-
-  for (const endpoint of endpoints) {
-    try {
-      const response = await axios.get(endpoint, {
-        params: { api_key: apiKey, email },
-        timeout: Number(getEnv("EMAIL_VERIFY_TIMEOUT_MS") || 9000)
-      });
-      return { ok: true, data: response?.data || {} };
-    } catch (error) {
-      if (Number(error?.response?.status) === 401) {
-        hadUnauthorized = true;
-      }
-      lastErrorMessage = error?.message || "";
-    }
-  }
-
-  if (hadUnauthorized) {
-    return { ok: false, reason: "auth_failed", message: "Invalid verifier API key." };
-  }
-  return { ok: false, reason: "unavailable", message: lastErrorMessage || "Verification endpoint unavailable." };
-};
-
-const verifyEmailAddress = async (email) => {
-  const apiKey = getEnv("ABSTRACT_EMAIL_VERIFY_API_KEY");
-  if (!apiKey) {
-    return { canSend: true, reasonCode: "verification_not_configured", userMessage: "" };
-  }
-
-  try {
-    const verificationResponse = await fetchVerificationData(apiKey, email);
-    if (!verificationResponse.ok) {
-      if (verificationResponse.reason === "auth_failed") {
-        return {
-          canSend: false,
-          reasonCode: "verification_auth_failed",
-          userMessage: "Verifier API key is invalid."
-        };
-      }
-      return {
-        canSend: true,
-        reasonCode: "verification_unavailable",
-        userMessage: ""
-      };
-    }
-
-    const data = verificationResponse.data || {};
-    const deliverability = data?.email_deliverability || {};
-    const formatValid = typeof deliverability?.is_format_valid === "boolean"
-      ? deliverability.is_format_valid
-      : Boolean(data?.is_valid_format?.value);
-    const mxFound = typeof deliverability?.is_mx_valid === "boolean"
-      ? deliverability.is_mx_valid
-      : Boolean(data?.is_mx_found?.value);
-    const smtpValid = typeof deliverability?.is_smtp_valid === "boolean"
-      ? deliverability.is_smtp_valid
-      : data?.is_smtp_valid?.value;
-    const status = String(deliverability?.status || deliverability?.status_detail || data?.deliverability || "").toUpperCase();
-
-    if (!formatValid) {
-      return { canSend: false, reasonCode: "invalid_format", userMessage: "Invalid email format, cannot send." };
-    }
-    if (!mxFound) {
-      return { canSend: false, reasonCode: "invalid_domain", userMessage: "Email domain is invalid, cannot send." };
-    }
-    if (smtpValid === false || status.includes("UNDELIVERABLE") || status.includes("INVALID")) {
-      return { canSend: false, reasonCode: "invalid_mailbox", userMessage: "This email ID is invalid, cannot send." };
-    }
-
-    return { canSend: true, reasonCode: "deliverable", userMessage: "" };
-  } catch (error) {
-    return { canSend: true, reasonCode: "verification_error", userMessage: "" };
-  }
+  await Promise.all(runners);
 };
 
 const sendBulkEmail = async (req, res) => {
@@ -281,96 +106,19 @@ const sendBulkEmail = async (req, res) => {
       return res.status(400).json({ message: "No valid recipients found" });
     }
 
-    const emailApiProvider = buildApiEmailProvider();
-    const { transporter, config, missing } = buildTransporter();
-    if (!transporter && !emailApiProvider) {
+    const { transporter, missing } = buildTransporter();
+    if (!transporter) {
       return res.status(500).json({
-        message: `Email provider is not configured. Missing SMTP keys: ${missing.join(", ")}. Set SMTP_HOST, SMTP_PORT, SMTP_SECURE, SMTP_USER, SMTP_PASS, SMTP_FROM or configure BULK_EMAIL_PROVIDER=resend with RESEND_API_KEY`
+        message: `SMTP is not configured. Missing: ${missing.join(", ")}. Set SMTP_HOST, SMTP_PORT, SMTP_SECURE, SMTP_USER, SMTP_PASS, SMTP_FROM`
       });
     }
 
     const from = getEnv("SMTP_FROM", "MAIL_FROM", "EMAIL_FROM") || getEnv("SMTP_USER", "MAIL_USER", "EMAIL_USER");
     const report = [];
     const normalizedTemplateMessage = normalizeTemplateText(templateMessage);
-    const verifierEnabled = String(getEnv("ENABLE_PRE_SEND_VERIFICATION") || "false").toLowerCase() === "true";
-    const verifierKeyConfigured = Boolean(getEnv("ABSTRACT_EMAIL_VERIFY_API_KEY"));
-    let activeTransporter = transporter;
-    let transportLabel = activeTransporter ? `${config.host}:${config.port} secure=${config.secure}` : "resend-api";
-    let useResendApi = emailApiProvider?.type === "resend";
+    const sendConcurrency = Number(getEnv("SMTP_BULK_CONCURRENCY") || 5);
 
-    if (verifierEnabled && !verifierKeyConfigured) {
-      return res.status(500).json({
-        message: "Pre-send verification is enabled but verifier key is missing.",
-        error: "Set ABSTRACT_EMAIL_VERIFY_API_KEY or disable ENABLE_PRE_SEND_VERIFICATION"
-      });
-    }
-
-    // Validate SMTP connectivity/auth first so production issues are surfaced clearly.
-    if (!useResendApi) {
-      try {
-        await activeTransporter.verify();
-      } catch (verifyError) {
-        if (canTryGmailFallback(config, verifyError)) {
-          const fallbackTransporter = createTransporter({
-            host: config.host,
-            port: 465,
-            secure: true,
-            user: config.user,
-            pass: config.pass
-          });
-          try {
-            await fallbackTransporter.verify();
-            activeTransporter = fallbackTransporter;
-            transportLabel = `${config.host}:465 secure=true (fallback)`;
-          } catch (fallbackError) {
-            if (emailApiProvider?.type === "resend" && emailApiProvider.apiKey) {
-              useResendApi = true;
-              transportLabel = "resend-api (smtp fallback failed)";
-            } else {
-              const meta = buildSmtpErrorMeta(fallbackError);
-              return res.status(500).json({
-                message: "SMTP connection/auth verification failed",
-                error: meta.message,
-                smtp: meta.smtp,
-                smtpCode: meta.code,
-                smtpResponseCode: meta.responseCode,
-                smtpCommand: meta.command,
-                hint: `${meta.hint} Tried fallback smtp.gmail.com:465 as well.`
-              });
-            }
-          }
-        } else if (emailApiProvider?.type === "resend" && emailApiProvider.apiKey) {
-          useResendApi = true;
-          transportLabel = "resend-api (smtp verify failed)";
-        } else {
-          const meta = buildSmtpErrorMeta(verifyError);
-          return res.status(500).json({
-            message: "SMTP connection/auth verification failed",
-            error: meta.message,
-            smtp: meta.smtp,
-            smtpCode: meta.code,
-            smtpResponseCode: meta.responseCode,
-            smtpCommand: meta.command,
-            hint: meta.hint
-          });
-        }
-      }
-    }
-
-    for (const recipient of normalizedRecipients) {
-      if (verifierEnabled && verifierKeyConfigured) {
-        const verification = await verifyEmailAddress(recipient.email);
-        if (!verification.canSend) {
-          report.push({
-            email: recipient.email,
-            status: "failed",
-            error: "Blocked before send",
-            userMessage: verification.userMessage || "This email ID is invalid, cannot send."
-          });
-          continue;
-        }
-      }
-
+    await runWithConcurrency(normalizedRecipients, sendConcurrency, async (recipient) => {
       const personalizedText = applyTemplate(normalizedTemplateMessage, recipient);
       const personalizedHtml = applyTemplate(normalizedTemplateMessage, recipient)
         .replace(/&/g, "&amp;")
@@ -379,22 +127,13 @@ const sendBulkEmail = async (req, res) => {
         .replace(/\n/g, "<br/>");
 
       try {
-        const info = useResendApi
-          ? await sendWithResend({
-              apiKey: emailApiProvider?.apiKey,
-              from,
-              recipient: recipient.email,
-              subject: String(subject),
-              text: personalizedText,
-              html: personalizedHtml
-            })
-          : await activeTransporter.sendMail({
-              from,
-              to: recipient.email,
-              subject: String(subject),
-              text: personalizedText,
-              html: personalizedHtml
-            });
+        const info = await transporter.sendMail({
+          from,
+          to: recipient.email,
+          subject: String(subject),
+          text: personalizedText,
+          html: personalizedHtml
+        });
 
         report.push({
           email: recipient.email,
@@ -402,31 +141,21 @@ const sendBulkEmail = async (req, res) => {
           messageId: info.messageId || null
         });
       } catch (error) {
-        const meta = buildSmtpErrorMeta(error);
         report.push({
           email: recipient.email,
           status: "failed",
-          error: meta.message || "Failed to send",
-          smtpCode: meta.code,
-          smtpResponseCode: meta.responseCode,
-          userMessage: classifyEmailSendError(error),
-          hint: meta.hint
+          error: error.message || "Failed to send"
         });
       }
-    }
+    });
 
-    const accepted = report.filter((item) => item.status === "sent").length;
-    const failed = report.filter((item) => item.status === "failed").length;
+    const sent = report.filter((item) => item.status === "sent").length;
+    const failed = report.length - sent;
 
     return res.status(200).json({
-      message: `Bulk email processed. Accepted by SMTP: ${accepted}, Failed at send time: ${failed}`,
-      note: verifierEnabled && verifierKeyConfigured
-        ? "Pre-send verification is enabled. Accepted by SMTP is not guaranteed delivered."
-        : "Accepted by SMTP is not guaranteed delivered. Some recipients may bounce later.",
-      smtpTransport: transportLabel,
+      message: `Bulk email completed. Sent: ${sent}, Failed: ${failed}`,
       total: report.length,
-      sent: accepted,
-      accepted,
+      sent,
       failed,
       report
     });
