@@ -1,7 +1,11 @@
 const jwt = require("jsonwebtoken");
 const User = require("../model/loginmodel");
 const Company = require("../model/company");
-const { ensureCompanyFolders, sanitizeCompanyName } = require("../config/cloudinary");
+const {
+  ensureCompanyFolders,
+  ensureUserAudioFolders,
+  sanitizeCompanyName
+} = require("../config/cloudinary");
 const { createTrialSubscription, getLatestSubscriptionForCompany } = require("../utils/billing");
 const { buildSubscriptionContext } = require("./billingController");
 
@@ -22,6 +26,7 @@ const ensureOtpCompany = async (user) => {
   });
 
   await ensureCompanyFolders({ companyName: company.name, companyId: company._id });
+  await ensureUserAudioFolders({ username: user.username, userId: user._id });
   await createTrialSubscription({ companyId: company._id, userId: user._id });
 
   user.companyId = company._id;
@@ -77,6 +82,8 @@ const verifyOtp = async (req, res) => {
         authProvider: "otp"
       });
     }
+
+    await ensureUserAudioFolders({ username: user.username, userId: user._id });
 
     await ensureOtpCompany(user);
     const subscription = await getLatestSubscriptionForCompany(user.companyId);

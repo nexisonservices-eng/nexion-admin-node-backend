@@ -389,6 +389,8 @@ const updateUserCredentialsByUserId = async (req, res) => {
       success: true,
       data: {
         userId: user._id,
+        username: user.username || "",
+        companyName: user.companyName || "",
         companyId: user.companyId || null,
         companyRole: user.companyRole || "user",
         planCode: planContext.planCode,
@@ -451,6 +453,8 @@ const getUserCredentialsByUserId = async (req, res) => {
       success: true,
       data: {
         userId: user._id,
+        username: user.username || "",
+        companyName: user.companyName || "",
         companyId: user.companyId || null,
         companyRole: user.companyRole || "user",
         planCode: planContext.planCode,
