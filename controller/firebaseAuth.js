@@ -2,7 +2,11 @@ const jwt = require("jsonwebtoken");
 const User = require("../model/loginmodel");
 const Company = require("../model/company");
 const { getFirebaseAdmin } = require("../config/firebaseAdmin");
-const { ensureCompanyFolders, sanitizeCompanyName } = require("../config/cloudinary");
+const {
+  ensureCompanyFolders,
+  ensureUserAudioFolders,
+  sanitizeCompanyName
+} = require("../config/cloudinary");
 const { createTrialSubscription } = require("../utils/billing");
 const { buildSubscriptionContext } = require("./billingController");
 
@@ -20,6 +24,10 @@ const resolveOrCreateCompany = async ({ user, displayName }) => {
   await ensureCompanyFolders({
     companyName: company.name,
     companyId: company._id
+  });
+  await ensureUserAudioFolders({
+    username: user.username,
+    userId: user._id
   });
 
   await createTrialSubscription({
@@ -76,6 +84,10 @@ const firebaseAuth = async (req, res) => {
       if (!user.googleId) user.googleId = decoded.uid;
       user.authProvider = "google";
       await user.save();
+      await ensureUserAudioFolders({
+        username: user.username,
+        userId: user._id
+      });
     }
 
     await resolveOrCreateCompany({ user, displayName });

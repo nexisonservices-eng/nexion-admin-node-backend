@@ -2,6 +2,7 @@ const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
 const User = require("../model/loginmodel");
 const { buildSubscriptionContext, ensureTrialForUser } = require("./billingController");
+const { ensureUserAudioFolders } = require("../config/cloudinary");
 
 const loginuser = async (req, res) => {
   try {
@@ -73,6 +74,10 @@ const loginuser = async (req, res) => {
 
     // 3. Create token
     await ensureTrialForUser(user);
+    await ensureUserAudioFolders({
+      username: user.username,
+      userId: user._id
+    });
     const billing = await buildSubscriptionContext(user);
     const token = jwt.sign(
       {
