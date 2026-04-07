@@ -243,12 +243,33 @@ const getUserByWhatsAppId = async (req, res) => {
       return res.status(400).json({ message: "whatsappId is required" });
     }
 
-    const user = await User.findOne({ whatsappid: whatsappId }).lean();
-    if (!user) {
+    const matches = await User.find({ whatsappid: whatsappId })
+      .select("_id email companyId updatedAt createdAt")
+      .sort({ updatedAt: -1, createdAt: -1 })
+      .lean();
+
+    if (!matches.length) {
       return res.status(404).json({ message: "User not found for whatsappId" });
     }
 
-    return res.json({ success: true, data: { userId: user._id, email: user.email || null } });
+    const selectedUser = matches[0];
+
+    if (matches.length > 1) {
+      console.warn(
+        `Duplicate whatsappId mapping detected for ${whatsappId}. ` +
+          `Using most recently updated user ${selectedUser._id}.`
+      );
+    }
+
+    return res.json({
+      success: true,
+      data: {
+        userId: selectedUser._id,
+        email: selectedUser.email || null,
+        companyId: selectedUser.companyId || null,
+        duplicateCount: matches.length
+      }
+    });
   } catch (error) {
     return res.status(500).json({ message: "Failed to resolve user by whatsappId", error: error.message });
   }
@@ -460,6 +481,7 @@ const getUserCredentialsByUserId = async (req, res) => {
         planCode: planContext.planCode,
         featureFlags: planContext.featureFlags,
         subscriptionStatus: planContext.subscriptionStatus,
+        username: user.username || "",
         email: user.email || "",
         twilioAccountSid: credentials.twilioAccountSid,
         twilioAuthToken: credentials.twilioAuthToken,
