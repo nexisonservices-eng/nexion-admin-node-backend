@@ -24,7 +24,16 @@ const FEATURE_FLAG_DEFAULTS = {
   outboundVoice: false,
   callAnalytics: false,
   missedCall: false,
-  workflowAutomation: false
+  workflowAutomation: false,
+  crmHome: false,
+  crmPipeline: false,
+  crmTasks: false,
+  crmDeals: false,
+  crmMeetings: false,
+  crmReports: false,
+  crmOps: false,
+  crmLeadScoringSettings: false,
+  crmTaskCalendar: false
 };
 
 const FEATURE_LABEL_ALIASES = {
@@ -56,15 +65,37 @@ const FEATURE_LABEL_TO_FLAGS = {
   Missed: { missedCall: true },
   "Missed Call": { missedCall: true },
   Email: { workflowAutomation: true },
-  "Email Automation": { workflowAutomation: true }
+  "Email Automation": { workflowAutomation: true },
+  "CRM Home": { crmHome: true },
+  Pipeline: { crmPipeline: true },
+  Tasks: { crmTasks: true },
+  Deals: { crmDeals: true },
+  Meetings: { crmMeetings: true },
+  Reports: { crmReports: true },
+  "Follow-up Ops": { crmOps: true },
+  "Lead Scoring Settings": { crmLeadScoringSettings: true },
+  "Task Calendar": { crmTaskCalendar: true }
 };
 
 const FEATURE_CATALOG = {
   metaAds: ["Ads Manager", "Insights", "Connect Meta"],
   bulkMessage: ["Broadcast Dashboard", "Team Inbox", "Broadcast", "Templates", "Contacts"],
   voice: ["Voice Broadcast", "Inbound Calls / IVR", "Outbound Voice", "Call Analytics"],
+  crm: [
+    "CRM Home",
+    "Pipeline",
+    "Tasks",
+    "Deals",
+    "Meetings",
+    "Reports",
+    "Follow-up Ops",
+    "Lead Scoring Settings",
+    "Task Calendar"
+  ],
   standalone: ["Missed Call", "Email Automation"]
 };
+
+const CRM_FEATURE_LABELS = FEATURE_CATALOG.crm;
 
 const DEFAULT_PLAN_FEATURE_LABELS = {
   basic: [
@@ -73,6 +104,7 @@ const DEFAULT_PLAN_FEATURE_LABELS = {
     "Broadcast",
     "Templates",
     "Contacts",
+    ...CRM_FEATURE_LABELS,
     "Voice Broadcast",
     "Missed Call"
   ],
@@ -85,6 +117,7 @@ const DEFAULT_PLAN_FEATURE_LABELS = {
     "Broadcast",
     "Templates",
     "Contacts",
+    ...CRM_FEATURE_LABELS,
     "Voice Broadcast",
     "Inbound Calls / IVR",
     "Call Analytics",
@@ -100,6 +133,7 @@ const DEFAULT_PLAN_FEATURE_LABELS = {
     "Broadcast",
     "Templates",
     "Contacts",
+    ...CRM_FEATURE_LABELS,
     "Voice Broadcast",
     "Inbound Calls / IVR",
     "Outbound Voice",
@@ -142,6 +176,7 @@ const PLAN_FEATURES = {
     "Broadcast",
     "Templates",
     "Contacts",
+    ...CRM_FEATURE_LABELS,
     "Voice Broadcast",
     "Inbound Calls / IVR",
     "Call Analytics",
@@ -202,6 +237,13 @@ const ensurePlanPricingSeed = async () => {
     }
     if (!Array.isArray(existing.features) || existing.features.length === 0) {
       existing.features = row.features;
+      await existing.save();
+      continue;
+    }
+    const normalizedFeatures = existing.features.map((feature) => normalizeFeatureLabel(feature)).filter(Boolean);
+    const hasCrmFeature = normalizedFeatures.some((feature) => CRM_FEATURE_LABELS.includes(feature));
+    if (!hasCrmFeature) {
+      existing.features = Array.from(new Set([...normalizedFeatures, ...CRM_FEATURE_LABELS]));
       await existing.save();
     }
   }
