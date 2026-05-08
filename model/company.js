@@ -10,6 +10,7 @@ const CompanySchema = new mongoose.Schema(
       default: "active"
     },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "admin" },
+    cloudinaryFolderRoot: { type: String, default: "" },
     trialStart: Date,
     trialEnd: Date,
     metaVerified: { type: Boolean, default: false }

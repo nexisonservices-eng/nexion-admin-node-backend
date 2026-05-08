@@ -4,7 +4,7 @@ const User = require("../model/loginmodel");
 const Company = require("../model/company");
 const {
   ensureCompanyFolders,
-  ensureUserAudioFolders,
+  buildCompanyCloudinaryRoot,
   sanitizeCompanyName
 } = require("../config/cloudinary");
 const { createTrialSubscription } = require("../utils/billing");
@@ -42,14 +42,15 @@ const registeruser = async (req, res) => {
       status: "active"
     });
 
-    await ensureCompanyFolders({
+    const cloudinarySetup = await ensureCompanyFolders({
       companyName: company.name,
+      companySlug: company.slug,
       companyId: company._id
     });
-    await ensureUserAudioFolders({
-      username: newUser.username,
-      userId: newUser._id
-    });
+    company.cloudinaryFolderRoot =
+      cloudinarySetup?.root ||
+      buildCompanyCloudinaryRoot({ companyName: company.name, companySlug: company.slug, companyId: company._id });
+    await company.save();
 
     newUser.companyId = company._id;
     newUser.companyRole = "admin";
@@ -69,6 +70,9 @@ const registeruser = async (req, res) => {
         role: newUser.role,
         companyId: newUser.companyId,
         companyRole: newUser.companyRole,
+        companyName: company.name,
+        companySlug: company.slug,
+        cloudinaryFolderRoot: company.cloudinaryFolderRoot,
         planCode: billing.planCode,
         featureFlags: billing.featureFlags,
         subscriptionStatus: billing.subscriptionStatus,
@@ -93,6 +97,8 @@ const registeruser = async (req, res) => {
         companyId: newUser.companyId || null,
         companyRole: newUser.companyRole || "admin",
         companyName: company.name || "",
+        companySlug: company.slug || "",
+        cloudinaryFolderRoot: company.cloudinaryFolderRoot || "",
         ...billing
       }
     });

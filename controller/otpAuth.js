@@ -3,7 +3,7 @@ const User = require("../model/loginmodel");
 const Company = require("../model/company");
 const {
   ensureCompanyFolders,
-  ensureUserAudioFolders,
+  buildCompanyCloudinaryRoot,
   sanitizeCompanyName
 } = require("../config/cloudinary");
 const { createTrialSubscription, getLatestSubscriptionForCompany } = require("../utils/billing");
@@ -25,8 +25,15 @@ const ensureOtpCompany = async (user) => {
     status: "active"
   });
 
-  await ensureCompanyFolders({ companyName: company.name, companyId: company._id });
-  await ensureUserAudioFolders({ username: user.username, userId: user._id });
+  const cloudinarySetup = await ensureCompanyFolders({
+    companyName: company.name,
+    companySlug: company.slug,
+    companyId: company._id
+  });
+  company.cloudinaryFolderRoot =
+    cloudinarySetup?.root ||
+    buildCompanyCloudinaryRoot({ companyName: company.name, companySlug: company.slug, companyId: company._id });
+  await company.save();
   await createTrialSubscription({ companyId: company._id, userId: user._id });
 
   user.companyId = company._id;
@@ -83,13 +90,12 @@ const verifyOtp = async (req, res) => {
       });
     }
 
-    await ensureUserAudioFolders({ username: user.username, userId: user._id });
-
     await ensureOtpCompany(user);
     const subscription = await getLatestSubscriptionForCompany(user.companyId);
     if (!subscription) {
       await createTrialSubscription({ companyId: user.companyId, userId: user._id });
     }
+    const company = user.companyId ? await Company.findById(user.companyId).lean() : null;
 
     const billing = await buildSubscriptionContext(user);
     const token = jwt.sign(
@@ -99,6 +105,9 @@ const verifyOtp = async (req, res) => {
         role: user.role,
         companyId: user.companyId,
         companyRole: user.companyRole,
+        companyName: company?.name || "",
+        companySlug: company?.slug || "",
+        cloudinaryFolderRoot: company?.cloudinaryFolderRoot || "",
         planCode: billing.planCode,
         featureFlags: billing.featureFlags,
         subscriptionStatus: billing.subscriptionStatus,
@@ -121,6 +130,9 @@ const verifyOtp = async (req, res) => {
         role: user.role,
         companyId: user.companyId,
         companyRole: user.companyRole,
+        companyName: company?.name || "",
+        companySlug: company?.slug || "",
+        cloudinaryFolderRoot: company?.cloudinaryFolderRoot || "",
         ...billing
       }
     });

@@ -1,7 +1,12 @@
 const MetaDocument = require("../model/metaDocument");
 const User = require("../model/loginmodel");
 const Company = require("../model/company");
-const { cloudinary, configureCloudinary, isCloudinaryConfigured } = require("../config/cloudinary");
+const {
+  cloudinary,
+  configureCloudinary,
+  isCloudinaryConfigured,
+  buildCompanyCloudinaryPaths
+} = require("../config/cloudinary");
 
 const emitDocumentEvents = (req, payload = {}) => {
   const io = req.app.get("io");
@@ -26,9 +31,11 @@ const uploadMetaDocument = async (req, res) => {
     }
 
     configureCloudinary();
-    const folder = req.company?.folderRoot
-      ? `${req.company.folderRoot}/documents`
-      : `technova/${req.company?.slug || "company"}_${req.company?._id}/documents`;
+    const folder = buildCompanyCloudinaryPaths({
+      companyName: req.company?.name,
+      companySlug: req.company?.slug,
+      companyId: req.company?._id || req.user.companyId
+    }).userDocumentsFolder;
 
     const uploadResult = await cloudinary.uploader.upload_stream(
       { folder, resource_type: "auto" },
@@ -86,9 +93,11 @@ const uploadMetaDocumentAdmin = async (req, res) => {
     }
 
     configureCloudinary();
-    const folder = company?.folderRoot
-      ? `${company.folderRoot}/documents`
-      : `technova/${company?.slug || "company"}_${company?._id}/documents`;
+    const folder = buildCompanyCloudinaryPaths({
+      companyName: company?.name,
+      companySlug: company?.slug,
+      companyId: company?._id
+    }).userDocumentsFolder;
 
     const uploadResult = await cloudinary.uploader.upload_stream(
       { folder, resource_type: "auto" },

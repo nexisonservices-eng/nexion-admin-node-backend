@@ -1,8 +1,9 @@
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
 const User = require("../model/loginmodel");
+const Company = require("../model/company");
 const { buildSubscriptionContext, ensureTrialForUser } = require("./billingController");
-const { ensureUserAudioFolders } = require("../config/cloudinary");
+const { ensureCompanyFolders, buildCompanyCloudinaryRoot } = require("../config/cloudinary");
 
 const loginuser = async (req, res) => {
   try {
@@ -74,10 +75,26 @@ const loginuser = async (req, res) => {
 
     // 3. Create token
     await ensureTrialForUser(user);
-    await ensureUserAudioFolders({
-      username: user.username,
-      userId: user._id
-    });
+    let company = null;
+    if (user.companyId) {
+      company = await Company.findById(user.companyId);
+      if (company) {
+        const cloudinarySetup = await ensureCompanyFolders({
+          companyName: company.name,
+          companySlug: company.slug,
+          companyId: company._id
+        });
+        const computedRoot = buildCompanyCloudinaryRoot({
+          companyName: company.name,
+          companySlug: company.slug,
+          companyId: company._id
+        });
+        if (!company.cloudinaryFolderRoot && (cloudinarySetup?.root || computedRoot)) {
+          company.cloudinaryFolderRoot = cloudinarySetup?.root || computedRoot;
+          await company.save();
+        }
+      }
+    }
     const billing = await buildSubscriptionContext(user);
     const token = jwt.sign(
       {
@@ -87,6 +104,9 @@ const loginuser = async (req, res) => {
         role: user.role,
         companyId: user.companyId,
         companyRole: user.companyRole,
+        companyName: company?.name || user.companyName || "",
+        companySlug: company?.slug || "",
+        cloudinaryFolderRoot: company?.cloudinaryFolderRoot || "",
         planCode: billing.planCode,
         featureFlags: billing.featureFlags,
         subscriptionStatus: billing.subscriptionStatus,
@@ -110,7 +130,9 @@ const loginuser = async (req, res) => {
         role: user.role,
         companyId: user.companyId || null,
         companyRole: user.companyRole || "admin",
-        companyName: user.companyName || "",
+        companyName: company?.name || user.companyName || "",
+        companySlug: company?.slug || "",
+        cloudinaryFolderRoot: company?.cloudinaryFolderRoot || "",
         ...billing,
         twilioAccountSid: user.twilioaccountsid || "",
         twilioAuthToken: user.twilioauthtoken || "",

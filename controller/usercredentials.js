@@ -1,5 +1,7 @@
 const mongoose = require("mongoose");
 const User = require("../model/loginmodel");
+const Company = require("../model/company");
+const { buildCompanyCloudinaryRoot } = require("../config/cloudinary");
 const { buildSubscriptionContext } = require("./billingController");
 
 const normalizePhone = (value) => String(value || "").replace(/\D/g, "").trim();
@@ -130,9 +132,41 @@ const buildSuperadminBilling = () => ({
   canViewAnalytics: true
 });
 
+const resolveCompanySnapshot = async (user = {}) => {
+  if (!user?.companyId || !mongoose.Types.ObjectId.isValid(String(user.companyId))) {
+    return {
+      companyName: user.companyName || "",
+      companySlug: "",
+      cloudinaryFolderRoot: ""
+    };
+  }
+
+  const company = await Company.findById(user.companyId).select("name slug cloudinaryFolderRoot").lean();
+  if (!company) {
+    return {
+      companyName: user.companyName || "",
+      companySlug: "",
+      cloudinaryFolderRoot: ""
+    };
+  }
+
+  const computedRoot = buildCompanyCloudinaryRoot({
+    companyName: company.name,
+    companySlug: company.slug,
+    companyId: user.companyId
+  });
+
+  return {
+    companyName: company.name || user.companyName || "",
+    companySlug: company.slug || "",
+    cloudinaryFolderRoot: company.cloudinaryFolderRoot || computedRoot
+  };
+};
+
 const formatUserPayload = async (user, billingOverride = null) => {
   const billing = billingOverride || (await buildSubscriptionContext(user));
   const { credentials } = await buildCredentialSnapshot(user);
+  const companySnapshot = await resolveCompanySnapshot(user);
   return {
     userId: user._id,
     role: user.role,
@@ -140,7 +174,7 @@ const formatUserPayload = async (user, billingOverride = null) => {
     email: user.email || "",
     companyId: user.companyId || null,
     companyRole: user.companyRole || "user",
-    companyName: user.companyName || "",
+    ...companySnapshot,
     ...billing,
     twilioAccountSid: credentials.twilioAccountSid,
     twilioAuthToken: credentials.twilioAuthToken,
@@ -253,6 +287,7 @@ const getUserByWhatsAppId = async (req, res) => {
     }
 
     const selectedUser = matches[0];
+    const companySnapshot = await resolveCompanySnapshot(selectedUser);
 
     if (matches.length > 1) {
       console.warn(
@@ -267,6 +302,7 @@ const getUserByWhatsAppId = async (req, res) => {
         userId: selectedUser._id,
         email: selectedUser.email || null,
         companyId: selectedUser.companyId || null,
+        ...companySnapshot,
         duplicateCount: matches.length
       }
     });
@@ -288,7 +324,16 @@ const getUserByPhoneNumber = async (req, res) => {
       return res.status(404).json({ message: "User not found for phoneNumber" });
     }
 
-    return res.json({ success: true, data: { userId: found._id, email: found.email || null } });
+    const companySnapshot = await resolveCompanySnapshot(found);
+    return res.json({
+      success: true,
+      data: {
+        userId: found._id,
+        email: found.email || null,
+        companyId: found.companyId || null,
+        ...companySnapshot
+      }
+    });
   } catch (error) {
     return res.status(500).json({ message: "Failed to resolve user by phoneNumber", error: error.message });
   }
@@ -469,13 +514,14 @@ const getUserCredentialsByUserId = async (req, res) => {
 
     const planContext = await buildSubscriptionContext(user);
     const { credentials, inheritedSource } = await buildCredentialSnapshot(user);
+    const companySnapshot = await resolveCompanySnapshot(user);
 
     return res.json({
       success: true,
       data: {
         userId: user._id,
         username: user.username || "",
-        companyName: user.companyName || "",
+        ...companySnapshot,
         companyId: user.companyId || null,
         companyRole: user.companyRole || "user",
         planCode: planContext.planCode,

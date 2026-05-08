@@ -4,7 +4,7 @@ const Company = require("../model/company");
 const { getFirebaseAdmin } = require("../config/firebaseAdmin");
 const {
   ensureCompanyFolders,
-  ensureUserAudioFolders,
+  buildCompanyCloudinaryRoot,
   sanitizeCompanyName
 } = require("../config/cloudinary");
 const { createTrialSubscription } = require("../utils/billing");
@@ -21,14 +21,15 @@ const resolveOrCreateCompany = async ({ user, displayName }) => {
     status: "active"
   });
 
-  await ensureCompanyFolders({
+  const cloudinarySetup = await ensureCompanyFolders({
     companyName: company.name,
+    companySlug: company.slug,
     companyId: company._id
   });
-  await ensureUserAudioFolders({
-    username: user.username,
-    userId: user._id
-  });
+  company.cloudinaryFolderRoot =
+    cloudinarySetup?.root ||
+    buildCompanyCloudinaryRoot({ companyName: company.name, companySlug: company.slug, companyId: company._id });
+  await company.save();
 
   await createTrialSubscription({
     companyId: company._id,
@@ -84,13 +85,10 @@ const firebaseAuth = async (req, res) => {
       if (!user.googleId) user.googleId = decoded.uid;
       user.authProvider = "google";
       await user.save();
-      await ensureUserAudioFolders({
-        username: user.username,
-        userId: user._id
-      });
     }
 
     await resolveOrCreateCompany({ user, displayName });
+    const company = user.companyId ? await Company.findById(user.companyId).lean() : null;
     const billing = await buildSubscriptionContext(user);
 
     const token = jwt.sign(
@@ -101,6 +99,9 @@ const firebaseAuth = async (req, res) => {
         role: user.role,
         companyId: user.companyId,
         companyRole: user.companyRole,
+        companyName: company?.name || "",
+        companySlug: company?.slug || "",
+        cloudinaryFolderRoot: company?.cloudinaryFolderRoot || "",
         planCode: billing.planCode,
         featureFlags: billing.featureFlags,
         subscriptionStatus: billing.subscriptionStatus,
@@ -131,6 +132,9 @@ const firebaseAuth = async (req, res) => {
         missedCallWebhook: user.missedcallwebhook || "",
         companyId: user.companyId || null,
         companyRole: user.companyRole || "admin",
+        companyName: company?.name || "",
+        companySlug: company?.slug || "",
+        cloudinaryFolderRoot: company?.cloudinaryFolderRoot || "",
         ...billing
       }
     });
