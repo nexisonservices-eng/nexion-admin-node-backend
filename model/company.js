@@ -18,6 +18,4 @@ const CompanySchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-CompanySchema.index({ slug: 1 });
-
 module.exports = mongoose.model("company", CompanySchema);

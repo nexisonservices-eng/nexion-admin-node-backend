@@ -1,6 +1,11 @@
 const crypto = require("crypto");
 const mongoose = require("mongoose");
-const Razorpay = require("razorpay");
+let Razorpay;
+try {
+  Razorpay = require("razorpay");
+} catch {
+  Razorpay = null;
+}
 const User = require("../model/loginmodel");
 const Company = require("../model/company");
 const Payment = require("../model/payment");
@@ -32,6 +37,7 @@ const emitEvent = (req, event, payload) => {
 };
 
 const getRazorpayClient = () => {
+  if (!Razorpay) return null;
   const keyId = String(process.env.RAZORPAY_KEY_ID || "").trim();
   const keySecret = String(process.env.RAZORPAY_KEY_SECRET || "").trim();
   if (!keyId || !keySecret) return null;

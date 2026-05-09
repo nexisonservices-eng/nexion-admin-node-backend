@@ -1,4 +1,9 @@
-const admin = require("firebase-admin");
+let admin;
+try {
+  admin = require("firebase-admin");
+} catch {
+  admin = null;
+}
 
 const normalizePrivateKey = (key) => {
   if (!key) return key;
@@ -6,6 +11,7 @@ const normalizePrivateKey = (key) => {
 };
 
 const initFromEnv = () => {
+  if (!admin) return false;
   const projectId = process.env.FIREBASE_PROJECT_ID;
   const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
   const privateKey = normalizePrivateKey(process.env.FIREBASE_PRIVATE_KEY);
@@ -26,6 +32,7 @@ const initFromEnv = () => {
 };
 
 const initFromJson = () => {
+  if (!admin) return false;
   const json = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
   if (!json) return false;
 
@@ -42,6 +49,9 @@ const initFromJson = () => {
 };
 
 const getFirebaseAdmin = () => {
+  if (!admin) {
+    throw new Error("firebase-admin package is not installed in the current runtime.");
+  }
   if (admin.apps.length) return admin;
 
   const initialized = initFromJson() || initFromEnv();

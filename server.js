@@ -4,8 +4,18 @@ const dotenv = require("dotenv");
 const path = require("path");
 const cors = require("cors");
 const http = require("http");
-const { Server } = require("socket.io");
 const { ensurePlanPricingSeed } = require("./utils/billing");
+
+let Server;
+try {
+  ({ Server } = require("socket.io"));
+} catch {
+  Server = class NoopSocketServer {
+    constructor() {}
+    on() {}
+  };
+}
+
 dotenv.config({ path: path.join(__dirname, ".env") });
 
 const app = express();
