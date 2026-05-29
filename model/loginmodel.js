@@ -64,6 +64,14 @@ const UserSchema = new mongoose.Schema(
       enum: ["admin", "user"],
       default: "admin"
     },
+    createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "admin", default: null },
+    ownerId: { type: mongoose.Schema.Types.ObjectId, ref: "admin", default: null },
+    parentUserId: { type: mongoose.Schema.Types.ObjectId, ref: "admin", default: null },
+    createdByName: { type: String, default: "" },
+    isAgentWorkspace: {
+      type: Boolean,
+      default: false
+    },
     googleId: {
       type: String
     },
@@ -111,6 +119,18 @@ const UserSchema = new mongoose.Schema(
     missedcalltemplatevariables: {
       type: [mongoose.Schema.Types.Mixed],
       default: []
+    },
+    canAccessUserManagement: {
+      type: Boolean,
+      default: false
+    },
+    canAccessAgentManagement: {
+      type: Boolean,
+      default: false
+    },
+    isEnabled: {
+      type: Boolean,
+      default: false
     },
 
     resetPasswordToken: {

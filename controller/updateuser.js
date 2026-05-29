@@ -1,9 +1,12 @@
 const User = require("../model/loginmodel");
-
+const {
+  buildAgentAccessPayload,
+  normalizeAgentAccessInput
+} = require("../utils/agentAccess");
 const updateUser = async (req, res) => {
   try {
     const userId = req.params.id;
-    const { username, email, role, twilioData = {} } = req.body;
+    const { username, email, role, canAccessUserManagement, canAccessAgentManagement, isEnabled, twilioData = {} } = req.body;
 
     const target = await User.findById(userId).select("role");
     if (!target) {
@@ -23,6 +26,12 @@ const updateUser = async (req, res) => {
         return res.status(400).json({ message: "Role must be either user or admin" });
       }
       updateData.role = normalizedRole;
+    }
+    const nextAccessValue = normalizeAgentAccessInput({ isEnabled, canAccessAgentManagement, canAccessUserManagement });
+    if (nextAccessValue !== null) {
+      updateData.isEnabled = nextAccessValue;
+      updateData.canAccessAgentManagement = nextAccessValue;
+      updateData.canAccessUserManagement = nextAccessValue;
     }
 
     // Accept both nested payload (twilioData) and top-level fields
@@ -76,6 +85,17 @@ const updateUser = async (req, res) => {
     }
 
     const updatedUser = await User.findByIdAndUpdate(userId, { $set: updateData }, { new: true });
+    const accessPayload = buildAgentAccessPayload(updatedUser || updateData);
+
+    const io = req.app.get("io");
+    if (io && updatedUser) {
+      io.emit("workspace.access.updated", {
+        userId: updatedUser._id,
+        ...accessPayload,
+        role: updatedUser.role,
+        updatedAt: new Date().toISOString()
+      });
+    }
 
     return res.status(200).json({
       message: "User updated successfully",
@@ -84,6 +104,7 @@ const updateUser = async (req, res) => {
         username: updatedUser.username,
         email: updatedUser.email,
         role: updatedUser.role,
+        ...accessPayload,
         twilioAccountSid: updatedUser.twilioaccountsid || "",
         twilioAuthToken: updatedUser.twilioauthtoken || "",
         twilioPhoneNumber: updatedUser.twiliophonenumber || updatedUser.phonenumber || "",

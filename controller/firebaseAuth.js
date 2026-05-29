@@ -1,6 +1,7 @@
 const jwt = require("jsonwebtoken");
 const User = require("../model/loginmodel");
 const Company = require("../model/company");
+const { buildAgentAccessPayload } = require("../utils/agentAccess");
 const { getFirebaseAdmin } = require("../config/firebaseAdmin");
 const {
   ensureCompanyFolders,
@@ -107,7 +108,8 @@ const firebaseAuth = async (req, res) => {
         subscriptionStatus: billing.subscriptionStatus,
         workspaceAccessState: billing.workspaceAccessState,
         canPerformActions: billing.canPerformActions,
-        canViewAnalytics: billing.canViewAnalytics
+        canViewAnalytics: billing.canViewAnalytics,
+        ...buildAgentAccessPayload(user)
       },
       process.env.JWT_SECRET,
       { expiresIn: "7d" }
@@ -135,7 +137,8 @@ const firebaseAuth = async (req, res) => {
         companyName: company?.name || "",
         companySlug: company?.slug || "",
         cloudinaryFolderRoot: company?.cloudinaryFolderRoot || "",
-        ...billing
+        ...billing,
+        ...buildAgentAccessPayload(user)
       }
     });
   } catch (error) {

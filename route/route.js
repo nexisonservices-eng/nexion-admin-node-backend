@@ -25,6 +25,7 @@ const payments = require("../controller/payments");
 const adminManagement = require("../controller/adminManagement");
 const bulkEmail = require("../controller/bulkEmail");
 const emailDashboardRoutes = require("./emailDashboard");
+const agentManagement = require("../controller/agentManagement");
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage() });
@@ -56,6 +57,9 @@ router.post("/api/email/bulk-send", protect, bulkEmail.sendBulkEmail);
 router.use("/api/email-dashboard", emailDashboardRoutes);
 
 router.get("/api/user/credentials", protect, getUserCredentials);
+router.get("/api/agents", protect, agentManagement.listAgents);
+router.post("/api/agents", protect, agentManagement.createAgent);
+router.put("/api/agents/:id", protect, agentManagement.updateAgent);
 router.get("/api/plan-pricing", billingController.listPublicPlanPricing);
 router.post("/api/subscriptions/create", protect, requireCompany, billingController.createSubscriptionOrder);
 router.post("/api/payments/verify", protect, requireCompany, billingController.verifySubscriptionPayment);

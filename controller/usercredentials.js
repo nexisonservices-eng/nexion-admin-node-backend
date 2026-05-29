@@ -1,6 +1,7 @@
 const mongoose = require("mongoose");
 const User = require("../model/loginmodel");
 const Company = require("../model/company");
+const { buildAgentAccessPayload } = require("../utils/agentAccess");
 const { buildCompanyCloudinaryRoot } = require("../config/cloudinary");
 const { buildSubscriptionContext } = require("./billingController");
 
@@ -36,6 +37,33 @@ const maskSecret = (value) => {
 };
 
 const hasNonEmptyValue = (value) => String(value || "").trim().length > 0;
+
+const resolveCompanyRole = (user = {}) => {
+  const explicitRole = String(user?.companyRole || "").trim().toLowerCase();
+  const normalizedRole = String(user?.role || "").trim().toLowerCase();
+  if (normalizedRole === "admin" || normalizedRole === "superadmin") {
+    return "admin";
+  }
+
+  if (user?.canAccessUserManagement === true || user?.canAccessAgentManagement === true) {
+    return "admin";
+  }
+
+  const appearsToOwnWorkspace =
+    Boolean(user?.companyId) && !user?.createdBy && !user?.ownerId && !user?.parentUserId;
+  if (appearsToOwnWorkspace) {
+    return "admin";
+  }
+
+  if (explicitRole === "admin") {
+    return "admin";
+  }
+  if (explicitRole === "user") {
+    return "user";
+  }
+
+  return "user";
+};
 
 const credentialFieldMap = {
   twilioAccountSid: "twilioaccountsid",
@@ -75,7 +103,11 @@ const mergeCredentialValue = (primary, fallback) => {
 };
 
 const buildCredentialSnapshot = async (user) => {
-  const inheritedSource = await findCompanyAdminCredentialSource(user);
+  const inheritedSource =
+    (user?.createdBy && (await User.findById(user.createdBy).lean())) ||
+    (user?.parentUserId && (await User.findById(user.parentUserId).lean())) ||
+    (user?.ownerId && (await User.findById(user.ownerId).lean())) ||
+    (await findCompanyAdminCredentialSource(user));
   const fromUser = user || {};
   const fromInherited = inheritedSource || {};
 
@@ -170,10 +202,15 @@ const formatUserPayload = async (user, billingOverride = null) => {
   return {
     userId: user._id,
     role: user.role,
+    ...buildAgentAccessPayload(user),
+    createdBy: user.createdBy || null,
+    ownerId: user.ownerId || user.createdBy || null,
+    parentUserId: user.parentUserId || user.createdBy || null,
+    createdByName: user.createdByName || "",
     username: user.username || "",
     email: user.email || "",
     companyId: user.companyId || null,
-    companyRole: user.companyRole || "user",
+    companyRole: resolveCompanyRole(user),
     ...companySnapshot,
     ...billing,
     twilioAccountSid: credentials.twilioAccountSid,
@@ -252,6 +289,11 @@ const getUserCredentials = async (req, res) => {
       success: true,
       data: {
         ...formattedUser,
+        createdBy: user.createdBy || null,
+        ownerId: user.ownerId || user.createdBy || null,
+        parentUserId: user.parentUserId || user.createdBy || null,
+        createdByName: user.createdByName || "",
+        ...buildAgentAccessPayload(user),
         metaAppId: credentials.metaAppId,
         metaAppSecret: credentials.metaAppSecret,
         metaRedirectUri: credentials.metaRedirectUri,
@@ -259,6 +301,7 @@ const getUserCredentials = async (req, res) => {
         metaAdAccountId: credentials.metaAdAccountId,
         metaApiVersion: credentials.metaApiVersion,
         metaJwtSecret: credentials.metaJwtSecret,
+        companyRole: resolveCompanyRole(user),
         credentialOwnerUserId: inheritedSource?._id || user._id
       }
     });
@@ -458,7 +501,7 @@ const updateUserCredentialsByUserId = async (req, res) => {
         username: user.username || "",
         companyName: user.companyName || "",
         companyId: user.companyId || null,
-        companyRole: user.companyRole || "user",
+        companyRole: resolveCompanyRole(user),
         planCode: planContext.planCode,
         featureFlags: planContext.featureFlags,
         subscriptionStatus: planContext.subscriptionStatus,
@@ -521,9 +564,14 @@ const getUserCredentialsByUserId = async (req, res) => {
       data: {
         userId: user._id,
         username: user.username || "",
+        createdBy: user.createdBy || null,
+        ownerId: user.ownerId || user.createdBy || null,
+        parentUserId: user.parentUserId || user.createdBy || null,
+        createdByName: user.createdByName || "",
+        ...buildAgentAccessPayload(user),
         ...companySnapshot,
         companyId: user.companyId || null,
-        companyRole: user.companyRole || "user",
+        companyRole: resolveCompanyRole(user),
         planCode: planContext.planCode,
         featureFlags: planContext.featureFlags,
         subscriptionStatus: planContext.subscriptionStatus,

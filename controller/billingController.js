@@ -14,6 +14,7 @@ const Subscription = require("../model/subscription");
 const UsageLog = require("../model/usageLog");
 const MetaDocument = require("../model/metaDocument");
 const CustomPackage = require("../model/customPackage");
+const { buildAgentAccessPayload } = require("../utils/agentAccess");
 const {
   TRIAL_LIMITS,
   FEATURE_LABEL_TO_FLAGS,
@@ -57,6 +58,33 @@ const normalizeFeatureLabelsInput = (features = []) =>
   );
 
 const toObjectIdString = (value) => (value ? String(value) : null);
+const resolveCompanyRole = (user = {}) => {
+  const explicitRole = String(user?.companyRole || "").trim().toLowerCase();
+  const normalizedRole = String(user?.role || "").trim().toLowerCase();
+  if (normalizedRole === "admin" || normalizedRole === "superadmin") {
+    return "admin";
+  }
+
+  if (user?.canAccessUserManagement === true || user?.canAccessAgentManagement === true) {
+    return "admin";
+  }
+
+  const appearsToOwnWorkspace =
+    Boolean(user?.companyId) && !user?.createdBy && !user?.ownerId && !user?.parentUserId;
+  if (appearsToOwnWorkspace) {
+    return "admin";
+  }
+
+  if (explicitRole === "admin") {
+    return "admin";
+  }
+  if (explicitRole === "user") {
+    return "user";
+  }
+
+  return "user";
+};
+
 const getActorObjectIdOrNull = (req) => {
   const actorId = req.user?.id || req.user?.userId || null;
   if (!actorId) return null;
@@ -482,6 +510,7 @@ const listUsers = async (req, res) => {
     const data = await Promise.all(users.map(async (user) => {
       const company = companyById.get(String(user.companyId || "")) || null;
       const latestSubscription = latestSubscriptionByCompanyId.get(String(user.companyId || "")) || null;
+      const accessPayload = buildAgentAccessPayload(user);
       const accessContext = await buildBillingAccessContext({
         user,
         company,
@@ -495,8 +524,9 @@ const listUsers = async (req, res) => {
         username: user.username || "",
         email: user.email || "",
         role: user.role || "user",
+        ...accessPayload,
         companyId: user.companyId || null,
-        companyRole: user.companyRole || "user",
+        companyRole: resolveCompanyRole(user),
         companyName: company?.name || "",
         planCode: accessContext.planCode,
         subscriptionStatus: accessContext.subscriptionStatus,

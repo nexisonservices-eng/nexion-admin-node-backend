@@ -2,6 +2,7 @@ const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
 const User = require("../model/loginmodel");
 const Company = require("../model/company");
+const { buildAgentAccessPayload } = require("../utils/agentAccess");
 const { buildSubscriptionContext, ensureTrialForUser } = require("./billingController");
 const { ensureCompanyFolders, buildCompanyCloudinaryRoot } = require("../config/cloudinary");
 
@@ -24,11 +25,12 @@ const loginuser = async (req, res) => {
     ) {
       const superAdminUserId = "superadmin-id";
       const token = jwt.sign(
-        {
-          id: superAdminUserId,
-          userId: superAdminUserId,
-          email,
-          role: "superadmin",
+      {
+        id: superAdminUserId,
+        userId: superAdminUserId,
+        email,
+        role: "superadmin",
+        ...buildAgentAccessPayload({ role: "superadmin" }),
         },
         process.env.JWT_SECRET,
         { expiresIn: "7d" }
@@ -43,6 +45,7 @@ const loginuser = async (req, res) => {
           username: "Super Admin",
           email,
           role: "superadmin",
+          ...buildAgentAccessPayload({ role: "superadmin" }),
           twilioAccountSid: "",
           whatsappId: "",
           whatsappToken: "",
@@ -96,6 +99,14 @@ const loginuser = async (req, res) => {
       }
     }
     const billing = await buildSubscriptionContext(user);
+    const accessPayload = buildAgentAccessPayload(user);
+
+    if (accessPayload.isAgentWorkspace && accessPayload.isEnabled === false) {
+      return res.status(403).json({
+        message: "Account is disabled"
+      });
+    }
+
     const token = jwt.sign(
       {
         userId: user._id,
@@ -112,7 +123,12 @@ const loginuser = async (req, res) => {
         subscriptionStatus: billing.subscriptionStatus,
         workspaceAccessState: billing.workspaceAccessState,
         canPerformActions: billing.canPerformActions,
-        canViewAnalytics: billing.canViewAnalytics
+        canViewAnalytics: billing.canViewAnalytics,
+        ...accessPayload,
+        createdBy: user.createdBy || null,
+        ownerId: user.ownerId || user.createdBy || null,
+        parentUserId: user.parentUserId || user.createdBy || null,
+        createdByName: user.createdByName || ""
       },
       process.env.JWT_SECRET,
       { expiresIn: "7d" }
@@ -134,6 +150,11 @@ const loginuser = async (req, res) => {
         companySlug: company?.slug || "",
         cloudinaryFolderRoot: company?.cloudinaryFolderRoot || "",
         ...billing,
+        ...accessPayload,
+        createdBy: user.createdBy || null,
+        ownerId: user.ownerId || user.createdBy || null,
+        parentUserId: user.parentUserId || user.createdBy || null,
+        createdByName: user.createdByName || "",
         twilioAccountSid: user.twilioaccountsid || "",
         twilioAuthToken: user.twilioauthtoken || "",
         twilioPhoneNumber: user.twiliophonenumber || user.phonenumber || "",
