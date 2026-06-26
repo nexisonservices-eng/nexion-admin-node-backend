@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: admin-node-backend
+    env: node
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: PORT
+        value: 8000
+      - key: NODE_ENV
+        value: production
+      - key: MONGODB_URI
+        description: MongoDB connection string for the admin backend.
+      - key: INTERNAL_API_KEY
+        description: Shared secret required by internal credential lookup endpoints.
+      - key: ADMIN_INTERNAL_API_KEY
+        description: Alias for the shared internal API key.
+      - key: ADMIN_BACKEND_URL
+        description: Public HTTPS URL for the admin backend.
+    plan: free
+    autoDeploy: true
