@@ -6,6 +6,30 @@ const { buildAgentAccessPayload } = require("../utils/agentAccess");
 const { buildSubscriptionContext, ensureTrialForUser } = require("./billingController");
 const { ensureCompanyFolders, buildCompanyCloudinaryRoot } = require("../config/cloudinary");
 
+const resolveCompanyRoleForAuth = (user = {}) => {
+  const normalizedRole = String(user?.role || "").trim().toLowerCase();
+  const explicitCompanyRole = String(user?.companyRole || "").trim().toLowerCase();
+  const hasAgentWorkspaceOwnership =
+    Boolean(user?.isAgentWorkspace === true) ||
+    Boolean(user?.createdBy) ||
+    Boolean(user?.ownerId) ||
+    Boolean(user?.parentUserId);
+
+  if (normalizedRole === "superadmin" || normalizedRole === "admin") {
+    return "admin";
+  }
+
+  if (hasAgentWorkspaceOwnership) {
+    return "user";
+  }
+
+  if (explicitCompanyRole === "admin" || explicitCompanyRole === "user") {
+    return explicitCompanyRole;
+  }
+
+  return user?.companyId ? "admin" : "user";
+};
+
 const loginuser = async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -100,6 +124,7 @@ const loginuser = async (req, res) => {
     }
     const billing = await buildSubscriptionContext(user);
     const accessPayload = buildAgentAccessPayload(user);
+    const companyRole = resolveCompanyRoleForAuth(user);
 
     if (accessPayload.isAgentWorkspace && accessPayload.isEnabled === false) {
       return res.status(403).json({
@@ -114,7 +139,7 @@ const loginuser = async (req, res) => {
         email: user.email,
         role: user.role,
         companyId: user.companyId,
-        companyRole: user.companyRole,
+        companyRole,
         companyName: company?.name || user.companyName || "",
         companySlug: company?.slug || "",
         cloudinaryFolderRoot: company?.cloudinaryFolderRoot || "",
@@ -145,7 +170,7 @@ const loginuser = async (req, res) => {
         email: user.email,
         role: user.role,
         companyId: user.companyId || null,
-        companyRole: user.companyRole || "admin",
+        companyRole,
         companyName: company?.name || user.companyName || "",
         companySlug: company?.slug || "",
         cloudinaryFolderRoot: company?.cloudinaryFolderRoot || "",

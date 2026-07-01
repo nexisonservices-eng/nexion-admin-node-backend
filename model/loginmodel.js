@@ -62,7 +62,7 @@ const UserSchema = new mongoose.Schema(
     companyRole: {
       type: String,
       enum: ["admin", "user"],
-      default: "admin"
+      default: "user"
     },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "admin", default: null },
     ownerId: { type: mongoose.Schema.Types.ObjectId, ref: "admin", default: null },

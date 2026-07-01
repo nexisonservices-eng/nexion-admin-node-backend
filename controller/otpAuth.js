@@ -10,6 +10,30 @@ const {
 const { createTrialSubscription, getLatestSubscriptionForCompany } = require("../utils/billing");
 const { buildSubscriptionContext } = require("./billingController");
 
+const resolveCompanyRoleForAuth = (user = {}) => {
+  const normalizedRole = String(user?.role || "").trim().toLowerCase();
+  const explicitCompanyRole = String(user?.companyRole || "").trim().toLowerCase();
+  const hasAgentWorkspaceOwnership =
+    Boolean(user?.isAgentWorkspace === true) ||
+    Boolean(user?.createdBy) ||
+    Boolean(user?.ownerId) ||
+    Boolean(user?.parentUserId);
+
+  if (normalizedRole === "superadmin" || normalizedRole === "admin") {
+    return "admin";
+  }
+
+  if (hasAgentWorkspaceOwnership) {
+    return "user";
+  }
+
+  if (explicitCompanyRole === "admin" || explicitCompanyRole === "user") {
+    return explicitCompanyRole;
+  }
+
+  return user?.companyId ? "admin" : "user";
+};
+
 const twilioClient = () => {
   const sid = process.env.TWILIO_ACCOUNT_SID || "";
   const token = process.env.TWILIO_AUTH_TOKEN || "";
@@ -99,13 +123,14 @@ const verifyOtp = async (req, res) => {
     const company = user.companyId ? await Company.findById(user.companyId).lean() : null;
 
     const billing = await buildSubscriptionContext(user);
+    const companyRole = resolveCompanyRoleForAuth(user);
     const token = jwt.sign(
       {
         userId: user._id,
         id: user._id,
         role: user.role,
         companyId: user.companyId,
-        companyRole: user.companyRole,
+        companyRole,
         companyName: company?.name || "",
         companySlug: company?.slug || "",
         cloudinaryFolderRoot: company?.cloudinaryFolderRoot || "",
@@ -131,7 +156,7 @@ const verifyOtp = async (req, res) => {
         email: user.email,
         role: user.role,
         companyId: user.companyId,
-        companyRole: user.companyRole,
+        companyRole,
         companyName: company?.name || "",
         companySlug: company?.slug || "",
         cloudinaryFolderRoot: company?.cloudinaryFolderRoot || "",

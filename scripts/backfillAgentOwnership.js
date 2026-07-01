@@ -52,7 +52,8 @@ const run = async () => {
           ownerId: parent._id,
           parentUserId: parent._id,
           createdByName: parent.username || "",
-          isAgentWorkspace: true
+          isAgentWorkspace: true,
+          companyRole: "user"
         }
       }
     );
