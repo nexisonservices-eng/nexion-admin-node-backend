@@ -14,12 +14,12 @@ const superAdminLogin = async (req, res) => {
     }
 
     // Check email
-    if (email !=="superadmin@technova@gmail.com") {
+    if (email !=="admintechnova@gmail.com") {
       return res.status(401).json({ message: "Invalid credentials" });
     }
 
     // Compare password (plain vs env)
-    const isMatch = password === "Super@123";
+    const isMatch = password === "Akshaya@123";
 
     if (!isMatch) {
       return res.status(401).json({ message: "Invalid credentials" });
