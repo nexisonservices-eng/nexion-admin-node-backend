@@ -96,18 +96,18 @@ const FEATURE_CATALOG = {
 };
 
 const CRM_FEATURE_LABELS = FEATURE_CATALOG.crm;
+const BASIC_PLAN_FEATURE_LABELS = [
+  "Broadcast Dashboard",
+  "Team Inbox",
+  "Broadcast",
+  "Templates",
+  "Contacts",
+  ...CRM_FEATURE_LABELS,
+  "Voice Broadcast"
+];
 
 const DEFAULT_PLAN_FEATURE_LABELS = {
-  basic: [
-    "Broadcast Dashboard",
-    "Team Inbox",
-    "Broadcast",
-    "Templates",
-    "Contacts",
-    ...CRM_FEATURE_LABELS,
-    "Voice Broadcast",
-    "Missed Call"
-  ],
+  basic: BASIC_PLAN_FEATURE_LABELS,
   growth: [
     "Ads Manager",
     "Insights",
@@ -241,9 +241,16 @@ const ensurePlanPricingSeed = async () => {
       continue;
     }
     const normalizedFeatures = existing.features.map((feature) => normalizeFeatureLabel(feature)).filter(Boolean);
-    const hasCrmFeature = normalizedFeatures.some((feature) => CRM_FEATURE_LABELS.includes(feature));
+    let reconciledFeatures =
+      row.planCode === "basic"
+        ? normalizedFeatures.filter((feature) => feature !== "Missed Call")
+        : normalizedFeatures;
+    const hasCrmFeature = reconciledFeatures.some((feature) => CRM_FEATURE_LABELS.includes(feature));
     if (!hasCrmFeature) {
-      existing.features = Array.from(new Set([...normalizedFeatures, ...CRM_FEATURE_LABELS]));
+      reconciledFeatures = Array.from(new Set([...reconciledFeatures, ...CRM_FEATURE_LABELS]));
+    }
+    if (reconciledFeatures.length !== normalizedFeatures.length || reconciledFeatures.some((feature, index) => feature !== normalizedFeatures[index])) {
+      existing.features = reconciledFeatures;
       await existing.save();
     }
   }
