@@ -17,5 +17,6 @@ services:
         description: Alias for the shared internal API key.
       - key: ADMIN_BACKEND_URL
         description: Public HTTPS URL for the admin backend.
+        value: https://nexion-admin-node-backend-cc5a.onrender.com
     plan: free
     autoDeploy: true
