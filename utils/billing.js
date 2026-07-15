@@ -96,18 +96,18 @@ const FEATURE_CATALOG = {
 };
 
 const CRM_FEATURE_LABELS = FEATURE_CATALOG.crm;
-const BASIC_PLAN_FEATURE_LABELS = [
-  "Broadcast Dashboard",
-  "Team Inbox",
-  "Broadcast",
-  "Templates",
-  "Contacts",
-  ...CRM_FEATURE_LABELS,
-  "Voice Broadcast"
-];
 
 const DEFAULT_PLAN_FEATURE_LABELS = {
-  basic: BASIC_PLAN_FEATURE_LABELS,
+  basic: [
+    "Broadcast Dashboard",
+    "Team Inbox",
+    "Broadcast",
+    "Templates",
+    "Contacts",
+    ...CRM_FEATURE_LABELS,
+    "Voice Broadcast",
+    "Missed Call"
+  ],
   growth: [
     "Ads Manager",
     "Insights",
@@ -241,16 +241,9 @@ const ensurePlanPricingSeed = async () => {
       continue;
     }
     const normalizedFeatures = existing.features.map((feature) => normalizeFeatureLabel(feature)).filter(Boolean);
-    let reconciledFeatures =
-      row.planCode === "basic"
-        ? normalizedFeatures.filter((feature) => feature !== "Missed Call")
-        : normalizedFeatures;
-    const hasCrmFeature = reconciledFeatures.some((feature) => CRM_FEATURE_LABELS.includes(feature));
+    const hasCrmFeature = normalizedFeatures.some((feature) => CRM_FEATURE_LABELS.includes(feature));
     if (!hasCrmFeature) {
-      reconciledFeatures = Array.from(new Set([...reconciledFeatures, ...CRM_FEATURE_LABELS]));
-    }
-    if (reconciledFeatures.length !== normalizedFeatures.length || reconciledFeatures.some((feature, index) => feature !== normalizedFeatures[index])) {
-      existing.features = reconciledFeatures;
+      existing.features = Array.from(new Set([...normalizedFeatures, ...CRM_FEATURE_LABELS]));
       await existing.save();
     }
   }
@@ -291,54 +284,6 @@ const buildTrialLimitsSnapshot = (subscription) => ({
 const getLatestSubscriptionForCompany = async (companyId) => {
   if (!companyId) return null;
   return Subscription.findOne({ companyId }).sort({ createdAt: -1 });
-};
-
-const normalizeDocumentType = (docType = "") => {
-  const compact = String(docType || "")
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "");
-
-  if (!compact) return "";
-  if (["pan", "pancard"].includes(compact)) return "pan";
-  if (["utilitybill", "utilitybillproof", "addressproof"].includes(compact)) return "utility_bill";
-  if (["gst", "gstcertificate", "gstregistration"].includes(compact)) return "gst";
-  if (compact === "passport") return "passport";
-  return compact;
-};
-
-const getDocumentTypeState = (docs = [], type = "") => {
-  const normalizedType = normalizeDocumentType(type);
-  const states = (Array.isArray(docs) ? docs : [])
-    .filter((doc) => normalizeDocumentType(doc?.docType) === normalizedType)
-    .map((doc) => String(doc?.status || "").toLowerCase());
-
-  if (states.includes("approved")) return "approved";
-  if (states.includes("pending")) return "pending";
-  if (states.includes("rejected")) return "rejected";
-  return "missing";
-};
-
-const getRequiredDocumentStatus = (docs = []) => {
-  const normalizedDocs = Array.isArray(docs) ? docs : [];
-  const panStatus = getDocumentTypeState(normalizedDocs, "pan");
-  const utilityBillStatus = getDocumentTypeState(normalizedDocs, "utility_bill");
-  const gstStatus = getDocumentTypeState(normalizedDocs, "gst");
-  const passportStatus = getDocumentTypeState(normalizedDocs, "passport");
-
-  const requiredStatuses = [panStatus, utilityBillStatus];
-  if (requiredStatuses.includes("rejected")) return "rejected";
-  if (requiredStatuses.includes("pending")) return "pending_review";
-  if (requiredStatuses.includes("missing")) return "missing";
-
-  const hasGstOrPassportApproved = [gstStatus, passportStatus].includes("approved");
-  if (hasGstOrPassportApproved) return "approved";
-
-  const optionalStatuses = [gstStatus, passportStatus];
-  if (optionalStatuses.includes("pending")) return "pending_review";
-  if (optionalStatuses.every((status) => status === "rejected")) return "rejected";
-
-  return "missing";
 };
 
 const createTrialSubscription = async ({ companyId, userId }) => {
@@ -406,7 +351,14 @@ const resolveDocumentStatus = (docs = [], planCode = "trial", subscriptionStatus
     return "not_required";
   }
 
-  return getRequiredDocumentStatus(docs);
+  if (!docs.length) return "missing";
+  if (docs.some((doc) => String(doc.status || "").toLowerCase() === "rejected")) {
+    return "rejected";
+  }
+  if (docs.every((doc) => String(doc.status || "").toLowerCase() === "approved")) {
+    return "approved";
+  }
+  return "pending_review";
 };
 
 const resolveWorkspaceAccessState = ({
@@ -547,10 +499,8 @@ module.exports = {
   ensurePlanPricingSeed,
   getLatestSubscriptionForCompany,
   getPlanFeatureLabels,
-  getRequiredDocumentStatus,
   resolveDocumentStatus,
   resolveFeatureFlagsForPlan,
   resolveSubscriptionStatus,
-  normalizeDocumentType,
   resolveWorkspaceAccessState
 };
