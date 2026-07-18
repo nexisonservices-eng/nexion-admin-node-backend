@@ -230,17 +230,33 @@ const addBillingCycle = (date, billingCycle) => {
 
 const ensurePlanPricingSeed = async () => {
   for (const row of DEFAULT_PRICING) {
-    const existing = await PlanPricing.findOne({ planCode: row.planCode });
-    if (!existing) {
-      await PlanPricing.create(row);
-      continue;
-    }
+    const normalizedPlanCode = String(row.planCode || "").trim().toLowerCase();
+    await PlanPricing.updateOne(
+      { planCode: normalizedPlanCode },
+      {
+        $setOnInsert: {
+          planCode: normalizedPlanCode,
+          monthlyPrice: Number(row.monthlyPrice || 0),
+          yearlyPrice: Number(row.yearlyPrice || 0),
+          currency: String(row.currency || "INR").trim().toUpperCase() || "INR",
+          features: row.features
+        }
+      },
+      { upsert: true }
+    );
+
+    const existing = await PlanPricing.findOne({ planCode: normalizedPlanCode });
+    if (!existing) continue;
+
     if (!Array.isArray(existing.features) || existing.features.length === 0) {
       existing.features = row.features;
       await existing.save();
       continue;
     }
-    const normalizedFeatures = existing.features.map((feature) => normalizeFeatureLabel(feature)).filter(Boolean);
+
+    const normalizedFeatures = existing.features
+      .map((feature) => normalizeFeatureLabel(feature))
+      .filter(Boolean);
     const hasCrmFeature = normalizedFeatures.some((feature) => CRM_FEATURE_LABELS.includes(feature));
     if (!hasCrmFeature) {
       existing.features = Array.from(new Set([...normalizedFeatures, ...CRM_FEATURE_LABELS]));
