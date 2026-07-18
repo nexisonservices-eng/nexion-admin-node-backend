@@ -30,6 +30,16 @@ const PaymentSchema = new mongoose.Schema(
       enum: ["monthly", "yearly"],
       required: true
     },
+    paymentMethod: {
+      type: String,
+      enum: ["razorpay", "cash", "manual"],
+      default: "razorpay",
+      index: true
+    },
+    paymentReference: {
+      type: String,
+      default: ""
+    },
     status: {
       type: String,
       enum: ["created", "captured", "failed"],

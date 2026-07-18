@@ -48,6 +48,8 @@ const getRazorpayClient = () => {
 const normalizePlan = (value) => String(value || "").trim().toLowerCase();
 const normalizeCycle = (value) =>
   String(value || "monthly").trim().toLowerCase() === "yearly" ? "yearly" : "monthly";
+const createPaymentReference = (prefix) =>
+  `${prefix}_${Date.now()}_${crypto.randomBytes(4).toString("hex")}`;
 const normalizeFeatureLabelsInput = (features = []) =>
   Array.from(
     new Set(
@@ -56,6 +58,71 @@ const normalizeFeatureLabelsInput = (features = []) =>
         .filter((feature) => feature && FEATURE_LABEL_TO_FLAGS[feature])
     )
   );
+
+const resolvePlanAmount = async ({ planCode, billingCycle, amountOverride = null }) => {
+  await ensurePlanPricingSeed();
+  const pricing = await PlanPricing.findOne({ planCode }).lean();
+  if (!pricing) {
+    throw new Error("Pricing not configured for selected plan");
+  }
+
+  const overrideAmount = Number(amountOverride);
+  if (Number.isFinite(overrideAmount) && overrideAmount > 0) {
+    return { pricing, amount: overrideAmount };
+  }
+
+  const amount = Number(billingCycle === "yearly" ? pricing.yearlyPrice : pricing.monthlyPrice);
+  return { pricing, amount };
+};
+
+const activatePaidSubscription = async ({ payment, paymentMethod = "razorpay", paymentReference = "" }) => {
+  const now = new Date();
+  const endsAt = addBillingCycle(now, payment.billingCycle);
+
+  payment.paymentMethod = paymentMethod;
+  payment.paymentReference = paymentReference || payment.paymentReference || "";
+  payment.status = "captured";
+  payment.capturedAt = now;
+  await payment.save();
+
+  let subscription = await getLatestSubscriptionForCompany(payment.companyId);
+  if (subscription) {
+    subscription.userId = payment.userId;
+    subscription.planCode = payment.planCode;
+    subscription.status = "active";
+    subscription.billingCycle = payment.billingCycle;
+    subscription.paymentMethod = paymentMethod;
+    subscription.startsAt = now;
+    subscription.endsAt = endsAt;
+    subscription.currentOrderId = payment.orderId;
+    subscription.currentPaymentId = payment.paymentId || payment.paymentReference || payment.orderId;
+    subscription.trialLimits = subscription.trialLimits || TRIAL_LIMITS;
+    subscription.trialUsage = subscription.trialUsage || { whatsappMessages: 0, voiceCalls: 0 };
+    await subscription.save();
+  } else {
+    subscription = await Subscription.create({
+      companyId: payment.companyId,
+      userId: payment.userId,
+      planCode: payment.planCode,
+      status: "active",
+      billingCycle: payment.billingCycle,
+      paymentMethod,
+      startsAt: now,
+      endsAt,
+      currentOrderId: payment.orderId,
+      currentPaymentId: payment.paymentId || payment.paymentReference || payment.orderId,
+      trialLimits: TRIAL_LIMITS,
+      trialUsage: { whatsappMessages: 0, voiceCalls: 0 }
+    });
+  }
+
+  payment.subscriptionId = subscription._id;
+  await payment.save();
+
+  const user = await User.findById(payment.userId);
+  const context = user ? await buildSubscriptionContext(user) : null;
+  return { payment, subscription, context };
+};
 
 const toObjectIdString = (value) => (value ? String(value) : null);
 const resolveCompanyRole = (user = {}) => {
@@ -248,13 +315,7 @@ const createSubscriptionOrder = async (req, res) => {
       return res.status(400).json({ message: "Only Basic and Growth plans are available for direct checkout" });
     }
 
-    await ensurePlanPricingSeed();
-    const pricing = await PlanPricing.findOne({ planCode }).lean();
-    if (!pricing) {
-      return res.status(404).json({ message: "Pricing not configured for selected plan" });
-    }
-
-    const amount = Number(billingCycle === "yearly" ? pricing.yearlyPrice : pricing.monthlyPrice);
+    const { pricing, amount } = await resolvePlanAmount({ planCode, billingCycle });
     if (!Number.isFinite(amount) || amount <= 0) {
       return res.status(400).json({ message: "Selected plan is not available for direct checkout" });
     }
@@ -279,6 +340,8 @@ const createSubscriptionOrder = async (req, res) => {
       subscriptionId: existingSubscription?._id || null,
       planCode,
       billingCycle,
+      paymentMethod: "razorpay",
+      paymentReference: order.id,
       status: "created",
       amount,
       currency: pricing.currency || "INR",
@@ -370,54 +433,34 @@ const verifySubscriptionPayment = async (req, res) => {
     }
 
     payment.paymentId = paymentId;
-    payment.status = "captured";
-    payment.capturedAt = new Date();
-    await payment.save();
-
-    let subscription = await getLatestSubscriptionForCompany(payment.companyId);
-    const now = new Date();
-    const endsAt = addBillingCycle(now, payment.billingCycle);
-
-    if (subscription) {
-      subscription.userId = payment.userId;
-      subscription.planCode = payment.planCode;
-      subscription.status = "active";
-      subscription.billingCycle = payment.billingCycle;
-      subscription.startsAt = now;
-      subscription.endsAt = endsAt;
-      subscription.currentOrderId = orderId;
-      subscription.currentPaymentId = paymentId;
-      subscription.trialLimits = subscription.trialLimits || TRIAL_LIMITS;
-      subscription.trialUsage = subscription.trialUsage || { whatsappMessages: 0, voiceCalls: 0 };
-      await subscription.save();
-    } else {
-      subscription = await Subscription.create({
-        companyId: payment.companyId,
-        userId: payment.userId,
-        planCode: payment.planCode,
-        status: "active",
-        billingCycle: payment.billingCycle,
-        startsAt: now,
-        endsAt,
-        currentOrderId: orderId,
-        currentPaymentId: paymentId,
-        trialLimits: TRIAL_LIMITS,
-        trialUsage: { whatsappMessages: 0, voiceCalls: 0 }
-      });
-    }
-
-    payment.subscriptionId = subscription._id;
-    await payment.save();
+    const activation = await activatePaidSubscription({
+      payment,
+      paymentMethod: "razorpay",
+      paymentReference: paymentId
+    });
 
     emitEvent(req, "payment.updated", {
       orderId,
       paymentId,
       companyId: String(payment.companyId),
-      status: "captured"
+      status: "captured",
+      paymentMethod: "razorpay"
     });
-
-    const user = await User.findById(payment.userId);
-    const context = user ? await buildSubscriptionContext(user) : null;
+    emitEvent(req, "workspace.access.updated", {
+      userId: String(payment.userId || ""),
+      companyId: String(payment.companyId || ""),
+      planCode: payment.planCode,
+      subscriptionStatus: "active",
+      workspaceAccessState: activation.context?.workspaceAccessState || "active",
+      canPerformActions: activation.context?.canPerformActions ?? true,
+      canViewAnalytics: activation.context?.canViewAnalytics ?? true
+    });
+    emitEvent(req, "user.features.updated", {
+      userId: String(payment.userId || ""),
+      companyId: String(payment.companyId || ""),
+      planCode: payment.planCode,
+      featureFlags: activation.context?.featureFlags || {}
+    });
 
     return res.json({
       success: true,
@@ -428,11 +471,119 @@ const verifySubscriptionPayment = async (req, res) => {
         subscriptionStatus: "active",
         planCode: payment.planCode,
         billingCycle: payment.billingCycle,
-        context
+        paymentMethod: "razorpay",
+        context: activation.context
       }
     });
   } catch (error) {
     return res.status(500).json({ message: "Failed to verify payment", error: error.message });
+  }
+};
+
+const createCashPayment = async (req, res) => {
+  try {
+    const actorId = getActorObjectIdOrNull(req);
+    const { userId } = req.params;
+    if (!userId || !mongoose.Types.ObjectId.isValid(userId)) {
+      return res.status(400).json({ message: "Valid userId is required" });
+    }
+
+    const targetUser = await User.findById(userId);
+    if (!targetUser) {
+      return res.status(404).json({ message: "User not found" });
+    }
+    if (String(targetUser.role || "").toLowerCase() === "superadmin") {
+      return res.status(400).json({ message: "Superadmin cannot have manual cash payments" });
+    }
+
+    if (!targetUser.companyId) {
+      await ensureBillingWorkspace(targetUser);
+    }
+
+    const planCode = normalizePlan(req.body?.planCode);
+    const billingCycle = normalizeCycle(req.body?.billingCycle);
+    if (!["basic", "growth", "enterprise"].includes(planCode)) {
+      return res.status(400).json({ message: "Valid planCode is required" });
+    }
+
+    const { pricing, amount } = await resolvePlanAmount({
+      planCode,
+      billingCycle,
+      amountOverride: req.body?.amount
+    });
+    if (!Number.isFinite(amount) || amount <= 0) {
+      return res.status(400).json({ message: "Amount must be greater than zero" });
+    }
+
+    const paymentReference = String(req.body?.paymentReference || "").trim() || createPaymentReference("cash");
+    const payment = await Payment.create({
+      companyId: targetUser.companyId,
+      userId: targetUser._id,
+      subscriptionId: null,
+      planCode,
+      billingCycle,
+      paymentMethod: "cash",
+      paymentReference,
+      status: "captured",
+      amount,
+      currency: pricing.currency || "INR",
+      orderId: paymentReference,
+      paymentId: paymentReference,
+      receipt: paymentReference,
+      notes: {
+        companyId: String(targetUser.companyId || ""),
+        userId: String(targetUser._id),
+        paymentMethod: "cash",
+        recordedBy: actorId ? String(actorId) : ""
+      },
+      capturedAt: new Date()
+    });
+
+    const activation = await activatePaidSubscription({
+      payment,
+      paymentMethod: "cash",
+      paymentReference
+    });
+
+    emitEvent(req, "payment.updated", {
+      orderId: paymentReference,
+      paymentId: paymentReference,
+      companyId: String(targetUser.companyId || ""),
+      status: "captured",
+      paymentMethod: "cash"
+    });
+    emitEvent(req, "workspace.access.updated", {
+      userId: String(targetUser._id),
+      companyId: String(targetUser.companyId || ""),
+      planCode,
+      subscriptionStatus: "active",
+      workspaceAccessState: activation.context?.workspaceAccessState || "active",
+      canPerformActions: activation.context?.canPerformActions ?? true,
+      canViewAnalytics: activation.context?.canViewAnalytics ?? true
+    });
+    emitEvent(req, "user.features.updated", {
+      userId: String(targetUser._id),
+      companyId: String(targetUser.companyId || ""),
+      planCode,
+      featureFlags: activation.context?.featureFlags || {}
+    });
+
+    return res.json({
+      success: true,
+      message: "Cash payment recorded and access activated",
+      data: {
+        paymentId: paymentReference,
+        orderId: paymentReference,
+        paymentMethod: "cash",
+        paymentReference,
+        planCode,
+        billingCycle,
+        subscriptionStatus: "active",
+        context: activation.context
+      }
+    });
+  } catch (error) {
+    return res.status(500).json({ message: "Failed to create cash payment", error: error.message });
   }
 };
 
@@ -480,6 +631,18 @@ const listUsers = async (req, res) => {
         latestSubscriptionByCompanyId.set(key, subscription);
       }
     }
+    const payments = await Payment.find({
+      companyId: { $in: companyIds }
+    })
+      .sort({ createdAt: -1 })
+      .lean();
+    const latestPaymentByCompanyId = new Map();
+    for (const payment of payments) {
+      const key = String(payment.companyId || "");
+      if (key && !latestPaymentByCompanyId.has(key)) {
+        latestPaymentByCompanyId.set(key, payment);
+      }
+    }
     const documents = await MetaDocument.find({
       companyId: { $in: companyIds }
     })
@@ -510,6 +673,7 @@ const listUsers = async (req, res) => {
     const data = await Promise.all(users.map(async (user) => {
       const company = companyById.get(String(user.companyId || "")) || null;
       const latestSubscription = latestSubscriptionByCompanyId.get(String(user.companyId || "")) || null;
+      const latestPayment = latestPaymentByCompanyId.get(String(user.companyId || "")) || null;
       const accessPayload = buildAgentAccessPayload(user);
       const accessContext = await buildBillingAccessContext({
         user,
@@ -530,6 +694,14 @@ const listUsers = async (req, res) => {
         companyName: company?.name || "",
         planCode: accessContext.planCode,
         subscriptionStatus: accessContext.subscriptionStatus,
+        latestPaymentMethod: latestPayment?.paymentMethod || "",
+        latestPaymentStatus: latestPayment?.status || "",
+        latestPaymentAmount: Number(latestPayment?.amount || 0),
+        latestPaymentCurrency: latestPayment?.currency || "",
+        latestPaymentPlanCode: latestPayment?.planCode || "",
+        latestPaymentBillingCycle: latestPayment?.billingCycle || "",
+        latestPaymentReference: latestPayment?.paymentReference || latestPayment?.orderId || "",
+        latestPaymentAt: latestPayment?.capturedAt || latestPayment?.createdAt || null,
         documentStatus: accessContext.documentStatus,
         workspaceAccessState: accessContext.workspaceAccessState,
         canPerformActions: accessContext.canPerformActions,
@@ -761,9 +933,16 @@ const createCustomPackagePaymentLink = async (req, res) => {
       }
     });
 
+    const paymentLinkUrl = String(link.short_url || "").trim();
+    if (!paymentLinkUrl) {
+      return res.status(500).json({
+        message: "Razorpay did not return a valid payment link URL"
+      });
+    }
+
     draft.status = "payment_link_created";
     draft.razorpayPaymentLinkId = String(link.id || "");
-    draft.razorpayPaymentLinkUrl = String(link.short_url || link.reference_id || "");
+    draft.razorpayPaymentLinkUrl = paymentLinkUrl;
     draft.updatedBy = actorId;
     await draft.save();
 
@@ -779,7 +958,7 @@ const createCustomPackagePaymentLink = async (req, res) => {
       data: {
         customPackageId: draft._id,
         paymentLinkId: link.id,
-        paymentLinkUrl: link.short_url || null,
+        paymentLinkUrl,
         amount: draft.amount,
         currency: draft.currency,
         billingCycle: draft.billingCycle
@@ -892,6 +1071,7 @@ const resetCustomPackageAccess = async (req, res) => {
 module.exports = {
   buildSubscriptionContext,
   createSubscriptionOrder,
+  createCashPayment,
   ensureBillingWorkspace,
   ensureTrialForUser,
   listAdminPlanPricing,

@@ -31,6 +31,11 @@ const SubscriptionSchema = new mongoose.Schema(
       enum: ["trial", "monthly", "yearly"],
       default: "trial"
     },
+    paymentMethod: {
+      type: String,
+      enum: ["razorpay", "cash", "manual"],
+      default: "razorpay"
+    },
     startsAt: {
       type: Date,
       required: true

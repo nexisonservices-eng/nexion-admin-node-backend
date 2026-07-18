@@ -91,6 +91,7 @@ router.post("/api/admin/users/:userId/custom-package/draft", protect, requireSup
 router.post("/api/admin/users/:userId/custom-package/payment-link", protect, requireSuperAdmin, billingController.createCustomPackagePaymentLink);
 router.post("/api/admin/custom-package/payments/verify", protect, requireSuperAdmin, billingController.verifyCustomPackagePayment);
 router.post("/api/admin/users/:userId/custom-package/reset", protect, requireSuperAdmin, billingController.resetCustomPackageAccess);
+router.post("/api/admin/users/:userId/cash-payment", protect, requireSuperAdmin, billingController.createCashPayment);
 router.post(
   "/api/admin/users/:userId/meta-documents",
   protect,

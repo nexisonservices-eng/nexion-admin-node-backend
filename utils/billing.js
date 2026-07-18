@@ -309,6 +309,7 @@ const resolveSubscriptionStatus = async (subscription) => {
     return {
       planCode: "trial",
       subscriptionStatus: "payment_pending",
+      paymentMethod: "razorpay",
       featureFlags: PLAN_FEATURES.trial,
       trialStart: null,
       trialEnd: null,
@@ -334,6 +335,7 @@ const resolveSubscriptionStatus = async (subscription) => {
   return {
     planCode,
     subscriptionStatus: status || "payment_pending",
+    paymentMethod: String(subscription.paymentMethod || "razorpay").toLowerCase(),
     featureFlags: await resolveFeatureFlagsForPlan(planCode),
     trialStart: startsAt,
     trialEnd: planCode === "trial" ? endsAt : null,
@@ -365,7 +367,8 @@ const resolveWorkspaceAccessState = ({
   subscriptionStatus,
   documentStatus,
   companyStatus,
-  planCode
+  planCode,
+  paymentMethod = "razorpay"
 }) => {
   if (String(companyStatus || "").toLowerCase() === "disabled") {
     return "disabled";
@@ -376,6 +379,13 @@ const resolveWorkspaceAccessState = ({
 
   if (normalizedSubscriptionStatus === "expired") {
     return "expired_readonly";
+  }
+
+  if (
+    ["cash", "manual"].includes(String(paymentMethod || "").toLowerCase()) &&
+    normalizedSubscriptionStatus === "active"
+  ) {
+    return "active";
   }
 
   if (normalizedPlanCode === "trial" && normalizedSubscriptionStatus === "trialing") {
@@ -405,7 +415,8 @@ const buildWorkspaceAccessContext = ({
     subscriptionStatus: billing.subscriptionStatus,
     documentStatus,
     companyStatus,
-    planCode: billing.planCode
+    planCode: billing.planCode,
+    paymentMethod: billing.paymentMethod
   });
 
   const canViewAnalytics = workspaceAccessState !== "disabled";
