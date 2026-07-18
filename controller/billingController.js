@@ -516,28 +516,36 @@ const createCashPayment = async (req, res) => {
     }
 
     const paymentReference = String(req.body?.paymentReference || "").trim() || createPaymentReference("cash");
-    const payment = await Payment.create({
-      companyId: targetUser.companyId,
-      userId: targetUser._id,
-      subscriptionId: null,
-      planCode,
-      billingCycle,
-      paymentMethod: "cash",
-      paymentReference,
-      status: "captured",
-      amount,
-      currency: pricing.currency || "INR",
-      orderId: paymentReference,
-      paymentId: paymentReference,
-      receipt: paymentReference,
-      notes: {
-        companyId: String(targetUser.companyId || ""),
-        userId: String(targetUser._id),
-        paymentMethod: "cash",
-        recordedBy: actorId ? String(actorId) : ""
+    const payment = await Payment.findOneAndUpdate(
+      { orderId: paymentReference },
+      {
+        $setOnInsert: {
+          companyId: targetUser.companyId,
+          userId: targetUser._id,
+          subscriptionId: null,
+          orderId: paymentReference,
+          capturedAt: new Date()
+        },
+        $set: {
+          planCode,
+          billingCycle,
+          paymentMethod: "cash",
+          paymentReference,
+          status: "captured",
+          amount,
+          currency: pricing.currency || "INR",
+          paymentId: paymentReference,
+          receipt: paymentReference,
+          notes: {
+            companyId: String(targetUser.companyId || ""),
+            userId: String(targetUser._id),
+            paymentMethod: "cash",
+            recordedBy: actorId ? String(actorId) : ""
+          }
+        }
       },
-      capturedAt: new Date()
-    });
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
 
     const activation = await activatePaidSubscription({
       payment,
