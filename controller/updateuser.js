@@ -6,7 +6,17 @@ const {
 const updateUser = async (req, res) => {
   try {
     const userId = req.params.id;
-    const { username, email, role, canAccessUserManagement, canAccessAgentManagement, isEnabled, twilioData = {} } = req.body;
+    const {
+      username,
+      email,
+      role,
+      canAccessUserManagement,
+      canAccessAgentManagement,
+      isEnabled,
+      metaPaymentFundUrl,
+      metapaymentfundurl,
+      twilioData = {}
+    } = req.body;
 
     const target = await User.findById(userId).select("role");
     if (!target) {
@@ -59,6 +69,8 @@ const updateUser = async (req, res) => {
       typeof twilioData.missedCallWebhook !== "undefined"
         ? twilioData.missedCallWebhook
         : req.body.missedCallWebhook;
+    const normalizedMetaPaymentFundUrl =
+      typeof metaPaymentFundUrl !== "undefined" ? metaPaymentFundUrl : metapaymentfundurl;
     if (typeof normalizedTwilioAccountSid !== "undefined") {
       updateData.twilioaccountsid = String(normalizedTwilioAccountSid).trim();
     }
@@ -82,6 +94,9 @@ const updateUser = async (req, res) => {
     }
     if (typeof normalizedMissedCallWebhook !== "undefined") {
       updateData.missedcallwebhook = String(normalizedMissedCallWebhook).trim();
+    }
+    if (typeof normalizedMetaPaymentFundUrl !== "undefined") {
+      updateData.metapaymentfundurl = String(normalizedMetaPaymentFundUrl).trim();
     }
 
     const updatedUser = await User.findByIdAndUpdate(userId, { $set: updateData }, { new: true });
@@ -111,6 +126,7 @@ const updateUser = async (req, res) => {
         whatsappId: updatedUser.whatsappid || "",
         whatsappToken: updatedUser.whatsapptoken || "",
         whatsappBusiness: updatedUser.whatsappbussiness || "",
+        metaPaymentFundUrl: updatedUser.metapaymentfundurl || "",
         phoneNumber: updatedUser.phonenumber || "",
         missedCallWebhook: updatedUser.missedcallwebhook || "",
       },
