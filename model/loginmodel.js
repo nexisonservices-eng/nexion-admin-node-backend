@@ -46,6 +46,9 @@ const UserSchema = new mongoose.Schema(
     metaadaccountid: {
       type: String
     },
+    metaPaymentFundUrl: {
+      type: String
+    },
     metaapiversion: {
       type: String
     },

@@ -24,6 +24,8 @@ const admindata = async (req, res) => {
       metauseraccesstoken,
       metaAdAccountId,
       metaadaccountid,
+      metaPaymentFundUrl,
+      metapaymentfundurl,
       metaApiVersion,
       metaapiVersion,
       metaJwtSecret,
@@ -46,6 +48,8 @@ const admindata = async (req, res) => {
       typeof metaUserAccessToken !== "undefined" ? metaUserAccessToken : metauseraccesstoken;
     const normalizedMetaAdAccountId =
       typeof metaAdAccountId !== "undefined" ? metaAdAccountId : metaadaccountid;
+    const normalizedMetaPaymentFundUrl =
+      typeof metaPaymentFundUrl !== "undefined" ? metaPaymentFundUrl : metapaymentfundurl;
     const normalizedMetaApiVersion =
       typeof metaApiVersion !== "undefined" ? metaApiVersion : metaapiVersion;
     const normalizedMetaJwtSecret =
@@ -98,6 +102,9 @@ const admindata = async (req, res) => {
     if (typeof normalizedMetaAdAccountId !== "undefined") {
       updateData.metaadaccountid = String(normalizedMetaAdAccountId || "").trim();
     }
+    if (typeof normalizedMetaPaymentFundUrl !== "undefined") {
+      updateData.metapaymentfundurl = String(normalizedMetaPaymentFundUrl || "").trim();
+    }
     if (typeof normalizedMetaApiVersion !== "undefined") {
       updateData.metaapiversion = String(normalizedMetaApiVersion || "").trim();
     }
@@ -134,6 +141,7 @@ const admindata = async (req, res) => {
         metaRedirectUri: updatedUser.metaredirecturi || "",
         metaUserAccessToken: updatedUser.metauseraccesstoken || "",
         metaAdAccountId: updatedUser.metaadaccountid || "",
+        metaPaymentFundUrl: updatedUser.metapaymentfundurl || "",
         metaApiVersion: updatedUser.metaapiversion || "",
         metaJwtSecret: updatedUser.metajwtsecret || "",
         phoneNumber: updatedUser.phonenumber || "",
