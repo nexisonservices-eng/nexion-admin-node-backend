@@ -104,7 +104,7 @@ const admindata = async (req, res) => {
     }
     const paymentFundUrl = String(normalizedMetaPaymentFundUrl || "").trim();
     if (paymentFundUrl) {
-      updateData.metapaymentfundurl = paymentFundUrl;
+      updateData.metaPaymentFundUrl = paymentFundUrl;
     }
     if (typeof normalizedMetaApiVersion !== "undefined") {
       updateData.metaapiversion = String(normalizedMetaApiVersion || "").trim();
@@ -142,7 +142,7 @@ const admindata = async (req, res) => {
         metaRedirectUri: updatedUser.metaredirecturi || "",
         metaUserAccessToken: updatedUser.metauseraccesstoken || "",
         metaAdAccountId: updatedUser.metaadaccountid || "",
-        metaPaymentFundUrl: updatedUser.metapaymentfundurl || "",
+        metaPaymentFundUrl: updatedUser.metaPaymentFundUrl || updatedUser.metapaymentfundurl || "",
         metaApiVersion: updatedUser.metaapiversion || "",
         metaJwtSecret: updatedUser.metajwtsecret || "",
         phoneNumber: updatedUser.phonenumber || "",

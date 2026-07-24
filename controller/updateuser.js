@@ -97,7 +97,7 @@ const updateUser = async (req, res) => {
     }
     const paymentFundUrl = String(normalizedMetaPaymentFundUrl || "").trim();
     if (paymentFundUrl) {
-      updateData.metapaymentfundurl = paymentFundUrl;
+      updateData.metaPaymentFundUrl = paymentFundUrl;
     }
 
     const updatedUser = await User.findByIdAndUpdate(userId, { $set: updateData }, { new: true });
@@ -127,7 +127,7 @@ const updateUser = async (req, res) => {
         whatsappId: updatedUser.whatsappid || "",
         whatsappToken: updatedUser.whatsapptoken || "",
         whatsappBusiness: updatedUser.whatsappbussiness || "",
-        metaPaymentFundUrl: updatedUser.metapaymentfundurl || "",
+        metaPaymentFundUrl: updatedUser.metaPaymentFundUrl || updatedUser.metapaymentfundurl || "",
         phoneNumber: updatedUser.phonenumber || "",
         missedCallWebhook: updatedUser.missedcallwebhook || "",
       },

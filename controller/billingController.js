@@ -733,7 +733,7 @@ const listUsers = async (req, res) => {
         metaRedirectUri: user.metaredirecturi || "",
         metaUserAccessToken: user.metauseraccesstoken || "",
         metaAdAccountId: user.metaadaccountid || "",
-        metaPaymentFundUrl: user.metapaymentfundurl || "",
+        metaPaymentFundUrl: user.metaPaymentFundUrl || user.metapaymentfundurl || "",
         metaApiVersion: user.metaapiversion || "",
         metaJwtSecret: user.metajwtsecret || "",
         phoneNumber: user.phonenumber || "",

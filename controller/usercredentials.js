@@ -17,7 +17,7 @@ const credentialFieldMap = {
   metaRedirectUri: 'metaredirecturi',
   metaUserAccessToken: 'metauseraccesstoken',
   metaAdAccountId: 'metaadaccountid',
-  metaPaymentFundUrl: 'metapaymentfundurl',
+  metaPaymentFundUrl: 'metaPaymentFundUrl',
   metaApiVersion: 'metaapiversion',
   metaJwtSecret: 'metajwtsecret',
   phoneNumber: 'phonenumber',
