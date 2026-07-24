@@ -102,8 +102,9 @@ const admindata = async (req, res) => {
     if (typeof normalizedMetaAdAccountId !== "undefined") {
       updateData.metaadaccountid = String(normalizedMetaAdAccountId || "").trim();
     }
-    if (typeof normalizedMetaPaymentFundUrl !== "undefined") {
-      updateData.metapaymentfundurl = String(normalizedMetaPaymentFundUrl || "").trim();
+    const paymentFundUrl = String(normalizedMetaPaymentFundUrl || "").trim();
+    if (paymentFundUrl) {
+      updateData.metapaymentfundurl = paymentFundUrl;
     }
     if (typeof normalizedMetaApiVersion !== "undefined") {
       updateData.metaapiversion = String(normalizedMetaApiVersion || "").trim();

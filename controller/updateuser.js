@@ -95,8 +95,9 @@ const updateUser = async (req, res) => {
     if (typeof normalizedMissedCallWebhook !== "undefined") {
       updateData.missedcallwebhook = String(normalizedMissedCallWebhook).trim();
     }
-    if (typeof normalizedMetaPaymentFundUrl !== "undefined") {
-      updateData.metapaymentfundurl = String(normalizedMetaPaymentFundUrl).trim();
+    const paymentFundUrl = String(normalizedMetaPaymentFundUrl || "").trim();
+    if (paymentFundUrl) {
+      updateData.metapaymentfundurl = paymentFundUrl;
     }
 
     const updatedUser = await User.findByIdAndUpdate(userId, { $set: updateData }, { new: true });
