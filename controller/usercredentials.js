@@ -229,12 +229,16 @@ const getUserCredentialsByUserId = async (req, res) => {
     if (normalizedUserId === 'superadmin-id') {
       user =
         (await User.findOne({
-          $or: [
-            { role: 'superadmin' },
-            { email: 'admintechnova@gmail.com' },
-            { username: 'Super Admin' }
-          ]
-        }).lean()) || null;
+          role: 'admin',
+          metaLeadFormId: { $exists: true, $ne: '' },
+          metaPageAccessToken: { $exists: true, $ne: '' }
+        })
+          .sort({ updatedAt: -1, createdAt: -1 })
+          .lean()) ||
+        (await User.findOne({
+          $or: [{ role: 'superadmin' }, { email: 'admintechnova@gmail.com' }, { username: 'Super Admin' }]
+        }).lean()) ||
+        null;
     } else {
       if (!mongoose.Types.ObjectId.isValid(normalizedUserId)) {
         return res.status(400).json({ message: 'Invalid userId' });
