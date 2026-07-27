@@ -223,8 +223,25 @@ const getUserByPhoneNumber = async (req, res) => {
 const getUserCredentialsByUserId = async (req, res) => {
   try {
     const { userId } = req.params;
-    if (!mongoose.Types.ObjectId.isValid(userId)) return res.status(400).json({ message: 'Invalid userId' });
-    const user = await User.findById(userId).lean();
+    const normalizedUserId = toStr(userId);
+    let user = null;
+
+    if (normalizedUserId === 'superadmin-id') {
+      user =
+        (await User.findOne({
+          $or: [
+            { role: 'superadmin' },
+            { email: 'admintechnova@gmail.com' },
+            { username: 'Super Admin' }
+          ]
+        }).lean()) || null;
+    } else {
+      if (!mongoose.Types.ObjectId.isValid(normalizedUserId)) {
+        return res.status(400).json({ message: 'Invalid userId' });
+      }
+      user = await User.findById(normalizedUserId).lean();
+    }
+
     if (!user) return res.status(404).json({ message: 'User not found' });
     return res.json({ success: true, data: await formatUserPayload(user) });
   } catch (error) {
