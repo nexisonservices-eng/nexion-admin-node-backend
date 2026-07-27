@@ -14,7 +14,11 @@ const updateUser = async (req, res) => {
       canAccessAgentManagement,
       isEnabled,
       metaPaymentFundUrl,
+      metaLeadFormId,
+      metaPageAccessToken,
       metapaymentfundurl,
+      metaleadformid,
+      metapageaccesstoken,
       twilioData = {}
     } = req.body;
 
@@ -71,6 +75,10 @@ const updateUser = async (req, res) => {
         : req.body.missedCallWebhook;
     const normalizedMetaPaymentFundUrl =
       typeof metaPaymentFundUrl !== "undefined" ? metaPaymentFundUrl : metapaymentfundurl;
+    const normalizedMetaLeadFormId =
+      typeof metaLeadFormId !== "undefined" ? metaLeadFormId : metaleadformid;
+    const normalizedMetaPageAccessToken =
+      typeof metaPageAccessToken !== "undefined" ? metaPageAccessToken : metapageaccesstoken;
     if (typeof normalizedTwilioAccountSid !== "undefined") {
       updateData.twilioaccountsid = String(normalizedTwilioAccountSid).trim();
     }
@@ -98,6 +106,14 @@ const updateUser = async (req, res) => {
     const paymentFundUrl = String(normalizedMetaPaymentFundUrl || "").trim();
     if (paymentFundUrl) {
       updateData.metaPaymentFundUrl = paymentFundUrl;
+    }
+    const leadFormId = String(normalizedMetaLeadFormId || "").trim();
+    if (leadFormId) {
+      updateData.metaLeadFormId = leadFormId;
+    }
+    const pageAccessToken = String(normalizedMetaPageAccessToken || "").trim();
+    if (pageAccessToken) {
+      updateData.metaPageAccessToken = pageAccessToken;
     }
 
     const updatedUser = await User.findByIdAndUpdate(userId, { $set: updateData }, { new: true });
@@ -128,6 +144,8 @@ const updateUser = async (req, res) => {
         whatsappToken: updatedUser.whatsapptoken || "",
         whatsappBusiness: updatedUser.whatsappbussiness || "",
         metaPaymentFundUrl: updatedUser.metaPaymentFundUrl || updatedUser.metapaymentfundurl || "",
+        metaLeadFormId: updatedUser.metaLeadFormId || updatedUser.metaleadformid || "",
+        metaPageAccessToken: updatedUser.metaPageAccessToken || updatedUser.metapageaccesstoken || "",
         phoneNumber: updatedUser.phonenumber || "",
         missedCallWebhook: updatedUser.missedcallwebhook || "",
       },
