@@ -46,6 +46,12 @@ const UserSchema = new mongoose.Schema(
     metaadaccountid: {
       type: String
     },
+    metaLeadFormId: {
+      type: String
+    },
+    metaPageAccessToken: {
+      type: String
+    },
     metaPaymentFundUrl: {
       type: String
     },

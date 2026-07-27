@@ -5,7 +5,7 @@ const { resolveSubscriptionStatus } = require("../utils/billing");
 const getAdmins = async (req, res) => {
   try {
     const users = await User.find({ role: "admin" }).select(
-      "username email role twilioaccountsid twilioauthtoken twiliophonenumber whatsappid whatsapptoken whatsappbussiness metaappid metaappsecret metaredirecturi metauseraccesstoken metaadaccountid metaPaymentFundUrl metaapiversion metajwtsecret phonenumber missedcallwebhook"
+      "username email role twilioaccountsid twilioauthtoken twiliophonenumber whatsappid whatsapptoken whatsappbussiness metaappid metaappsecret metaredirecturi metauseraccesstoken metaadaccountid metaLeadFormId metaPageAccessToken metaPaymentFundUrl metaapiversion metajwtsecret phonenumber missedcallwebhook"
     );
 
     const subscriptions = await Subscription.find({
@@ -39,6 +39,8 @@ const getAdmins = async (req, res) => {
       metaRedirectUri: u.metaredirecturi || "",
       metaUserAccessToken: u.metauseraccesstoken || "",
       metaAdAccountId: u.metaadaccountid || "",
+      metaLeadFormId: u.metaLeadFormId || u.metaleadformid || "",
+      metaPageAccessToken: u.metaPageAccessToken || u.metapageaccesstoken || "",
       metaPaymentFundUrl: u.metaPaymentFundUrl || u.metapaymentfundurl || "",
       metaApiVersion: u.metaapiversion || "",
       metaJwtSecret: u.metajwtsecret || "",

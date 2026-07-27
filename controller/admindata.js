@@ -24,6 +24,10 @@ const admindata = async (req, res) => {
       metauseraccesstoken,
       metaAdAccountId,
       metaadaccountid,
+      metaLeadFormId,
+      metaleadformid,
+      metaPageAccessToken,
+      metapageaccesstoken,
       metaPaymentFundUrl,
       metapaymentfundurl,
       metaApiVersion,
@@ -48,6 +52,10 @@ const admindata = async (req, res) => {
       typeof metaUserAccessToken !== "undefined" ? metaUserAccessToken : metauseraccesstoken;
     const normalizedMetaAdAccountId =
       typeof metaAdAccountId !== "undefined" ? metaAdAccountId : metaadaccountid;
+    const normalizedMetaLeadFormId =
+      typeof metaLeadFormId !== "undefined" ? metaLeadFormId : metaleadformid;
+    const normalizedMetaPageAccessToken =
+      typeof metaPageAccessToken !== "undefined" ? metaPageAccessToken : metapageaccesstoken;
     const normalizedMetaPaymentFundUrl =
       typeof metaPaymentFundUrl !== "undefined" ? metaPaymentFundUrl : metapaymentfundurl;
     const normalizedMetaApiVersion =
@@ -102,6 +110,12 @@ const admindata = async (req, res) => {
     if (typeof normalizedMetaAdAccountId !== "undefined") {
       updateData.metaadaccountid = String(normalizedMetaAdAccountId || "").trim();
     }
+    if (typeof normalizedMetaLeadFormId !== "undefined") {
+      updateData.metaLeadFormId = String(normalizedMetaLeadFormId || "").trim();
+    }
+    if (typeof normalizedMetaPageAccessToken !== "undefined") {
+      updateData.metaPageAccessToken = String(normalizedMetaPageAccessToken || "").trim();
+    }
     const paymentFundUrl = String(normalizedMetaPaymentFundUrl || "").trim();
     if (paymentFundUrl) {
       updateData.metaPaymentFundUrl = paymentFundUrl;
@@ -142,6 +156,8 @@ const admindata = async (req, res) => {
         metaRedirectUri: updatedUser.metaredirecturi || "",
         metaUserAccessToken: updatedUser.metauseraccesstoken || "",
         metaAdAccountId: updatedUser.metaadaccountid || "",
+        metaLeadFormId: updatedUser.metaLeadFormId || updatedUser.metaleadformid || "",
+        metaPageAccessToken: updatedUser.metaPageAccessToken || updatedUser.metapageaccesstoken || "",
         metaPaymentFundUrl: updatedUser.metaPaymentFundUrl || updatedUser.metapaymentfundurl || "",
         metaApiVersion: updatedUser.metaapiversion || "",
         metaJwtSecret: updatedUser.metajwtsecret || "",
