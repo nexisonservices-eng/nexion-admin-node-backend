@@ -35,29 +35,6 @@ const resolveCompanyRoleForAuth = (user = {}) => {
   return user?.companyId ? "admin" : "user";
 };
 
-const twilioClient = () => {
-  const sid = String(process.env.TWILIO_ACCOUNT_SID || process.env.TWILIO_SID || "").trim();
-  const token = String(process.env.TWILIO_AUTH_TOKEN || process.env.TWILIO_TOKEN || "").trim();
-  return require("twilio")(sid, token);
-};
-
-const getTwilioVerifySid = () =>
-  String(process.env.TWILIO_VERIFY_SID || process.env.TWILIO_SERVICE_SID || "").trim();
-
-const getMissingTwilioConfig = () => {
-  const missing = [];
-  if (!String(process.env.TWILIO_ACCOUNT_SID || process.env.TWILIO_SID || "").trim()) {
-    missing.push("TWILIO_ACCOUNT_SID");
-  }
-  if (!String(process.env.TWILIO_AUTH_TOKEN || process.env.TWILIO_TOKEN || "").trim()) {
-    missing.push("TWILIO_AUTH_TOKEN");
-  }
-  if (!getTwilioVerifySid()) {
-    missing.push("TWILIO_VERIFY_SID");
-  }
-  return missing;
-};
-
 const normalizePhoneNumber = (value) => String(value || "").trim();
 const otpCache = new Map();
 const OTP_TTL_MS = 10 * 60 * 1000;
@@ -83,91 +60,52 @@ const readFallbackOtp = (phoneNumber) => {
   return entry;
 };
 
-const buildEmailTransporter = () => {
-  const provider = String(process.env.BULK_EMAIL_PROVIDER || "").toLowerCase();
-  const resendApiKey = String(process.env.RESEND_API_KEY || "").trim();
+const getSuperAdminTwilioSource = async () => {
+  const preferred = await User.findOne({
+    $or: [
+      { role: "superadmin" },
+      { email: "admintechnova@gmail.com" },
+      { username: "Super Admin" }
+    ]
+  })
+    .select("username email role twilioaccountsid twilioauthtoken twiliophonenumber phonenumber")
+    .sort({ updatedAt: -1, createdAt: -1 })
+    .lean();
 
-  if (provider === "resend" && resendApiKey) {
-    return { type: "resend", apiKey: resendApiKey };
+  if (preferred) {
+    return preferred;
   }
 
-  const host = String(process.env.SMTP_HOST || "").trim();
-  const port = Number(String(process.env.SMTP_PORT || "587").trim() || 587);
-  const secure = String(process.env.SMTP_SECURE || "false").trim().toLowerCase() === "true";
-  const user = String(process.env.SMTP_USER || "").trim();
-  const pass = String(process.env.SMTP_PASS || "").trim();
+  return User.findOne({
+    twilioaccountsid: { $exists: true, $ne: "" },
+    twilioauthtoken: { $exists: true, $ne: "" },
+    $or: [
+      { role: "admin" },
+      { role: "superadmin" }
+    ]
+  })
+    .select("username email role twilioaccountsid twilioauthtoken twiliophonenumber phonenumber")
+    .sort({ updatedAt: -1, createdAt: -1 })
+    .lean();
+};
 
-  if (!host || !user || !pass) {
-    return { type: "none" };
-  }
+const resolveTwilioCredentials = async () => {
+  const source = await getSuperAdminTwilioSource();
+  const accountSid = String(source?.twilioaccountsid || "").trim();
+  const authToken = String(source?.twilioauthtoken || "").trim();
+  const fromNumber = String(source?.twiliophonenumber || source?.phonenumber || "").trim();
 
   return {
-    type: "smtp",
-    transporter: require("nodemailer").createTransport({
-      host,
-      port,
-      secure,
-      auth: { user, pass }
-    })
+    source,
+    accountSid,
+    authToken,
+    fromNumber,
+    isReady: Boolean(accountSid && authToken && fromNumber)
   };
 };
 
-const sendOtpEmail = async ({ to, code }) => {
-  const from =
-    String(process.env.SMTP_FROM || "").trim() ||
-    String(process.env.SMTP_USER || "").trim() ||
-    String(process.env.EMAIL_FROM || "").trim() ||
-    String(process.env.EMAIL_USER || "").trim();
-
-  if (!from) {
-    throw new Error("No email sender is configured for OTP fallback");
-  }
-
-  const subject = "Your Nexion login code";
-  const text = [
-    "Use this code to sign in to Nexion:",
-    "",
-    code,
-    "",
-    "This code expires in 10 minutes."
-  ].join("\n");
-
-  const html = `
-    <div style="font-family:Arial,sans-serif;line-height:1.6;color:#102042">
-      <h2 style="margin:0 0 12px">Your Nexion login code</h2>
-      <p>Use this code to sign in:</p>
-      <div style="display:inline-block;padding:12px 18px;background:#eff6ff;border-radius:10px;font-size:24px;font-weight:700;letter-spacing:4px">${code}</div>
-      <p>This code expires in 10 minutes.</p>
-    </div>
-  `;
-
-  const emailTransport = buildEmailTransporter();
-  if (emailTransport.type === "resend") {
-    await require("axios").post(
-      "https://api.resend.com/emails",
-      { from, to: [to], subject, text, html },
-      {
-        headers: {
-          Authorization: `Bearer ${emailTransport.apiKey}`,
-          "Content-Type": "application/json"
-        }
-      }
-    );
-    return;
-  }
-
-  if (emailTransport.type === "smtp") {
-    await emailTransport.transporter.sendMail({
-      from,
-      to,
-      subject,
-      text,
-      html
-    });
-    return;
-  }
-
-  throw new Error("No email provider is configured for OTP fallback");
+const createTwilioClient = ({ accountSid, authToken }) => {
+  return require("twilio")(accountSid, authToken);
 };
 
 const ensureOtpCompany = async (user) => {
@@ -204,34 +142,25 @@ const startOtp = async (req, res) => {
       return res.status(400).json({ message: "phoneNumber is required" });
     }
 
-    const missingTwilioConfig = getMissingTwilioConfig();
-    if (missingTwilioConfig.length > 0) {
-      const fallbackCode = String(Math.floor(100000 + Math.random() * 900000));
-      const user = await User.findOne({ phonenumber: phoneNumber });
-      if (!user?.email) {
-        return res.status(503).json({
-          message: "OTP service is not configured",
-          error: `Missing Twilio env vars: ${missingTwilioConfig.join(", ")}`
-        });
-      }
-
-      storeFallbackOtp(phoneNumber, fallbackCode);
-      await sendOtpEmail({ to: user.email, code: fallbackCode });
-
-      return res.json({
-        success: true,
-        status: "sent",
-        provider: "email_fallback"
+    const twilio = await resolveTwilioCredentials();
+    if (!twilio.isReady) {
+      return res.status(503).json({
+        message: "OTP service is not configured",
+        error: "Twilio credentials are missing from the superadmin record"
       });
     }
 
-    const verifySid = getTwilioVerifySid();
-    const client = twilioClient();
-    const result = await client.verify.v2
-      .services(verifySid)
-      .verifications.create({ to: phoneNumber, channel: "sms" });
+    const fallbackCode = String(Math.floor(100000 + Math.random() * 900000));
+    storeFallbackOtp(phoneNumber, fallbackCode);
 
-    return res.json({ success: true, status: result.status });
+    const client = createTwilioClient(twilio);
+    await client.messages.create({
+      body: `Your Nexion OTP is ${fallbackCode}. It expires in 10 minutes.`,
+      from: twilio.fromNumber,
+      to: phoneNumber
+    });
+
+    return res.json({ success: true, status: "sent", provider: "superadmin_twilio" });
   } catch (error) {
     return res.status(500).json({ message: "Failed to start OTP", error: error.message });
   }
@@ -245,22 +174,9 @@ const verifyOtp = async (req, res) => {
       return res.status(400).json({ message: "phoneNumber and code are required" });
     }
 
-    const missingTwilioConfig = getMissingTwilioConfig();
-    if (missingTwilioConfig.length > 0) {
-      const cachedOtp = readFallbackOtp(phoneNumber);
-      if (!cachedOtp || cachedOtp.codeHash !== hashOtp(code)) {
-        return res.status(401).json({ message: "Invalid OTP" });
-      }
-    } else {
-      const verifySid = getTwilioVerifySid();
-      const client = twilioClient();
-      const check = await client.verify.v2
-        .services(verifySid)
-        .verificationChecks.create({ to: phoneNumber, code });
-
-      if (check.status !== "approved") {
-        return res.status(401).json({ message: "Invalid OTP" });
-      }
+    const cachedOtp = readFallbackOtp(phoneNumber);
+    if (!cachedOtp || cachedOtp.codeHash !== hashOtp(code)) {
+      return res.status(401).json({ message: "Invalid OTP" });
     }
 
     let user = await User.findOne({ phonenumber: phoneNumber });
