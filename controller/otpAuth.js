@@ -78,6 +78,7 @@ const getSuperAdminTwilioSource = async () => {
     $or: [
       { role: "superadmin" },
       { email: "admintechnova@gmail.com" },
+      { email: "superadmin@technova.com" },
       { username: "Super Admin" }
     ]
   })
