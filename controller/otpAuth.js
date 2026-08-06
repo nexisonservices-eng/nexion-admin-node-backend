@@ -74,7 +74,7 @@ const selectTwilioSource = (users = []) => {
 };
 
 const getSuperAdminTwilioSource = async () => {
-  const preferred = await User.findOne({
+  const superAdmin = await User.findOne({
     $or: [
       { role: "superadmin" },
       { email: "admintechnova@gmail.com" },
@@ -84,25 +84,7 @@ const getSuperAdminTwilioSource = async () => {
     .select("username email role twilioaccountsid twilioauthtoken twiliophonenumber phonenumber")
     .sort({ updatedAt: -1, createdAt: -1 })
     .lean();
-
-  const preferredTwilio = selectTwilioSource(preferred ? [preferred] : []);
-  if (preferredTwilio) {
-    return preferredTwilio;
-  }
-
-  const fallbackCandidates = await User.find({
-    twilioaccountsid: { $exists: true, $ne: "" },
-    twilioauthtoken: { $exists: true, $ne: "" },
-    $or: [
-      { role: "admin" },
-      { role: "superadmin" }
-    ]
-  })
-    .select("username email role twilioaccountsid twilioauthtoken twiliophonenumber phonenumber")
-    .sort({ updatedAt: -1, createdAt: -1 })
-    .lean();
-
-  return selectTwilioSource(fallbackCandidates);
+  return selectTwilioSource(superAdmin ? [superAdmin] : []);
 };
 
 const resolveTwilioCredentials = async () => {
@@ -162,7 +144,7 @@ const startOtp = async (req, res) => {
     if (!twilio.isReady) {
       return res.status(503).json({
         message: "OTP service is not configured",
-        error: "No valid Twilio credentials were found in the superadmin/admin records"
+        error: "No valid Twilio credentials were found in the superadmin record"
       });
     }
 
