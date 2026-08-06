@@ -1,3 +1,4 @@
+const crypto = require("crypto");
 const jwt = require("jsonwebtoken");
 const User = require("../model/loginmodel");
 const Company = require("../model/company");
@@ -35,9 +36,138 @@ const resolveCompanyRoleForAuth = (user = {}) => {
 };
 
 const twilioClient = () => {
-  const sid = process.env.TWILIO_ACCOUNT_SID || "";
-  const token = process.env.TWILIO_AUTH_TOKEN || "";
+  const sid = String(process.env.TWILIO_ACCOUNT_SID || process.env.TWILIO_SID || "").trim();
+  const token = String(process.env.TWILIO_AUTH_TOKEN || process.env.TWILIO_TOKEN || "").trim();
   return require("twilio")(sid, token);
+};
+
+const getTwilioVerifySid = () =>
+  String(process.env.TWILIO_VERIFY_SID || process.env.TWILIO_SERVICE_SID || "").trim();
+
+const getMissingTwilioConfig = () => {
+  const missing = [];
+  if (!String(process.env.TWILIO_ACCOUNT_SID || process.env.TWILIO_SID || "").trim()) {
+    missing.push("TWILIO_ACCOUNT_SID");
+  }
+  if (!String(process.env.TWILIO_AUTH_TOKEN || process.env.TWILIO_TOKEN || "").trim()) {
+    missing.push("TWILIO_AUTH_TOKEN");
+  }
+  if (!getTwilioVerifySid()) {
+    missing.push("TWILIO_VERIFY_SID");
+  }
+  return missing;
+};
+
+const normalizePhoneNumber = (value) => String(value || "").trim();
+const otpCache = new Map();
+const OTP_TTL_MS = 10 * 60 * 1000;
+
+const hashOtp = (code) =>
+  crypto.createHash("sha256").update(String(code || "")).digest("hex");
+
+const storeFallbackOtp = (phoneNumber, code) => {
+  otpCache.set(normalizePhoneNumber(phoneNumber), {
+    codeHash: hashOtp(code),
+    expiresAt: Date.now() + OTP_TTL_MS
+  });
+};
+
+const readFallbackOtp = (phoneNumber) => {
+  const key = normalizePhoneNumber(phoneNumber);
+  const entry = otpCache.get(key);
+  if (!entry) return null;
+  if (Number(entry.expiresAt || 0) <= Date.now()) {
+    otpCache.delete(key);
+    return null;
+  }
+  return entry;
+};
+
+const buildEmailTransporter = () => {
+  const provider = String(process.env.BULK_EMAIL_PROVIDER || "").toLowerCase();
+  const resendApiKey = String(process.env.RESEND_API_KEY || "").trim();
+
+  if (provider === "resend" && resendApiKey) {
+    return { type: "resend", apiKey: resendApiKey };
+  }
+
+  const host = String(process.env.SMTP_HOST || "").trim();
+  const port = Number(String(process.env.SMTP_PORT || "587").trim() || 587);
+  const secure = String(process.env.SMTP_SECURE || "false").trim().toLowerCase() === "true";
+  const user = String(process.env.SMTP_USER || "").trim();
+  const pass = String(process.env.SMTP_PASS || "").trim();
+
+  if (!host || !user || !pass) {
+    return { type: "none" };
+  }
+
+  return {
+    type: "smtp",
+    transporter: require("nodemailer").createTransport({
+      host,
+      port,
+      secure,
+      auth: { user, pass }
+    })
+  };
+};
+
+const sendOtpEmail = async ({ to, code }) => {
+  const from =
+    String(process.env.SMTP_FROM || "").trim() ||
+    String(process.env.SMTP_USER || "").trim() ||
+    String(process.env.EMAIL_FROM || "").trim() ||
+    String(process.env.EMAIL_USER || "").trim();
+
+  if (!from) {
+    throw new Error("No email sender is configured for OTP fallback");
+  }
+
+  const subject = "Your Nexion login code";
+  const text = [
+    "Use this code to sign in to Nexion:",
+    "",
+    code,
+    "",
+    "This code expires in 10 minutes."
+  ].join("\n");
+
+  const html = `
+    <div style="font-family:Arial,sans-serif;line-height:1.6;color:#102042">
+      <h2 style="margin:0 0 12px">Your Nexion login code</h2>
+      <p>Use this code to sign in:</p>
+      <div style="display:inline-block;padding:12px 18px;background:#eff6ff;border-radius:10px;font-size:24px;font-weight:700;letter-spacing:4px">${code}</div>
+      <p>This code expires in 10 minutes.</p>
+    </div>
+  `;
+
+  const emailTransport = buildEmailTransporter();
+  if (emailTransport.type === "resend") {
+    await require("axios").post(
+      "https://api.resend.com/emails",
+      { from, to: [to], subject, text, html },
+      {
+        headers: {
+          Authorization: `Bearer ${emailTransport.apiKey}`,
+          "Content-Type": "application/json"
+        }
+      }
+    );
+    return;
+  }
+
+  if (emailTransport.type === "smtp") {
+    await emailTransport.transporter.sendMail({
+      from,
+      to,
+      subject,
+      text,
+      html
+    });
+    return;
+  }
+
+  throw new Error("No email provider is configured for OTP fallback");
 };
 
 const ensureOtpCompany = async (user) => {
@@ -69,12 +199,33 @@ const ensureOtpCompany = async (user) => {
 
 const startOtp = async (req, res) => {
   try {
-    const { phoneNumber } = req.body;
+    const phoneNumber = normalizePhoneNumber(req.body?.phoneNumber);
     if (!phoneNumber) {
       return res.status(400).json({ message: "phoneNumber is required" });
     }
 
-    const verifySid = process.env.TWILIO_VERIFY_SID || "";
+    const missingTwilioConfig = getMissingTwilioConfig();
+    if (missingTwilioConfig.length > 0) {
+      const fallbackCode = String(Math.floor(100000 + Math.random() * 900000));
+      const user = await User.findOne({ phonenumber: phoneNumber });
+      if (!user?.email) {
+        return res.status(503).json({
+          message: "OTP service is not configured",
+          error: `Missing Twilio env vars: ${missingTwilioConfig.join(", ")}`
+        });
+      }
+
+      storeFallbackOtp(phoneNumber, fallbackCode);
+      await sendOtpEmail({ to: user.email, code: fallbackCode });
+
+      return res.json({
+        success: true,
+        status: "sent",
+        provider: "email_fallback"
+      });
+    }
+
+    const verifySid = getTwilioVerifySid();
     const client = twilioClient();
     const result = await client.verify.v2
       .services(verifySid)
@@ -88,19 +239,28 @@ const startOtp = async (req, res) => {
 
 const verifyOtp = async (req, res) => {
   try {
-    const { phoneNumber, code } = req.body;
+    const phoneNumber = normalizePhoneNumber(req.body?.phoneNumber);
+    const code = normalizePhoneNumber(req.body?.code);
     if (!phoneNumber || !code) {
       return res.status(400).json({ message: "phoneNumber and code are required" });
     }
 
-    const verifySid = process.env.TWILIO_VERIFY_SID || "";
-    const client = twilioClient();
-    const check = await client.verify.v2
-      .services(verifySid)
-      .verificationChecks.create({ to: phoneNumber, code });
+    const missingTwilioConfig = getMissingTwilioConfig();
+    if (missingTwilioConfig.length > 0) {
+      const cachedOtp = readFallbackOtp(phoneNumber);
+      if (!cachedOtp || cachedOtp.codeHash !== hashOtp(code)) {
+        return res.status(401).json({ message: "Invalid OTP" });
+      }
+    } else {
+      const verifySid = getTwilioVerifySid();
+      const client = twilioClient();
+      const check = await client.verify.v2
+        .services(verifySid)
+        .verificationChecks.create({ to: phoneNumber, code });
 
-    if (check.status !== "approved") {
-      return res.status(401).json({ message: "Invalid OTP" });
+      if (check.status !== "approved") {
+        return res.status(401).json({ message: "Invalid OTP" });
+      }
     }
 
     let user = await User.findOne({ phonenumber: phoneNumber });
