@@ -85,7 +85,21 @@ const getSuperAdminTwilioSource = async () => {
     .select("username email role twilioaccountsid twilioauthtoken twiliophonenumber phonenumber")
     .sort({ updatedAt: -1, createdAt: -1 })
     .lean();
-  return selectTwilioSource(superAdmin ? [superAdmin] : []);
+
+  const adminFallback = await User.findOne({
+    role: "admin",
+    twilioaccountsid: { $exists: true, $ne: "" },
+    twilioauthtoken: { $exists: true, $ne: "" },
+    $or: [
+      { twiliophonenumber: { $exists: true, $ne: "" } },
+      { phonenumber: { $exists: true, $ne: "" } }
+    ]
+  })
+    .select("username email role twilioaccountsid twilioauthtoken twiliophonenumber phonenumber")
+    .sort({ updatedAt: -1, createdAt: -1 })
+    .lean();
+
+  return selectTwilioSource([superAdmin, adminFallback].filter(Boolean));
 };
 
 const resolveTwilioCredentials = async () => {
