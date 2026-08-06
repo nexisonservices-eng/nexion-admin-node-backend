@@ -51,6 +51,7 @@ router.post("/api/auth/otp/start", otpAuth.startOtp);
 router.post("/api/auth/otp/verify", otpAuth.verifyOtp);
 router.post("/api/auth/firebase", firebaseAuth);
 router.post("/api/forgotpassword", forgotPassword);
+router.post("/api/forgot-password", forgotPassword);
 router.post("/api/resetpassword/:token", resetPassword);
 router.post("/api/nexion/logout", authMiddleware, logout);
 router.post("/api/email/bulk-send", protect, bulkEmail.sendBulkEmail);
