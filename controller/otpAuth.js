@@ -90,14 +90,33 @@ const getSuperAdminTwilioSource = async () => {
       { role: "admin" },
       { email: "admintechnova@gmail.com" },
       { email: "superadmin@technova.com" },
-      { username: "Super Admin" }
+      { username: "Super Admin" },
+      { twilioaccountsid: { $exists: true, $ne: "" } },
+      { twilioAccountSid: { $exists: true, $ne: "" } },
+      { twilioauthtoken: { $exists: true, $ne: "" } },
+      { twilioAuthToken: { $exists: true, $ne: "" } },
+      { twiliophonenumber: { $exists: true, $ne: "" } },
+      { twilioPhoneNumber: { $exists: true, $ne: "" } },
+      { phonenumber: { $exists: true, $ne: "" } },
+      { phoneNumber: { $exists: true, $ne: "" } }
     ]
   })
     .select("username email role twilioaccountsid twilioAccountSid twilioauthtoken twilioAuthToken twiliophonenumber twilioPhoneNumber phonenumber phoneNumber")
     .sort({ updatedAt: -1, createdAt: -1 })
     .lean();
 
-  return selectTwilioSource(candidates);
+  const rankedCandidates = candidates.sort((left, right) => {
+    const score = (user) => {
+      const role = String(user?.role || "").trim().toLowerCase();
+      if (role === "superadmin") return 3;
+      if (role === "admin") return 2;
+      return 1;
+    };
+
+    return score(right) - score(left);
+  });
+
+  return selectTwilioSource(rankedCandidates);
 };
 
 const resolveTwilioCredentials = async () => {
