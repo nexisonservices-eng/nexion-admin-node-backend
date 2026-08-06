@@ -38,11 +38,17 @@ const sanitizeServiceAccountJson = (value) => {
 
 const normalizeServiceAccount = (serviceAccount = {}) => {
   const normalized = { ...serviceAccount };
-  normalized.project_id = normalized.project_id || normalized.projectId || normalized.projectID;
-  normalized.client_email = normalized.client_email || normalized.clientEmail;
-  normalized.private_key = normalizePrivateKey(normalized.private_key || normalized.privateKey);
-  normalized.private_key_id = normalized.private_key_id || normalized.privateKeyId;
-  normalized.client_id = normalized.client_id || normalized.clientId;
+  const projectId = String(normalized.project_id || normalized.projectId || normalized.projectID || "").trim();
+  const clientEmail = String(normalized.client_email || normalized.clientEmail || "").trim();
+  const privateKey = normalizePrivateKey(normalized.private_key || normalized.privateKey || "");
+  normalized.project_id = projectId;
+  normalized.projectId = projectId;
+  normalized.client_email = clientEmail;
+  normalized.clientEmail = clientEmail;
+  normalized.private_key = privateKey;
+  normalized.privateKey = privateKey;
+  normalized.private_key_id = String(normalized.private_key_id || normalized.privateKeyId || "").trim();
+  normalized.client_id = String(normalized.client_id || normalized.clientId || "").trim();
   return normalized;
 };
 
@@ -81,9 +87,20 @@ const initFromJson = () => {
     throw parseError;
   }
   serviceAccount = normalizeServiceAccount(serviceAccount);
+  const credentialPayload = {
+    projectId: serviceAccount.projectId,
+    clientEmail: serviceAccount.clientEmail,
+    privateKey: serviceAccount.privateKey
+  };
+
+  if (!credentialPayload.projectId || !credentialPayload.clientEmail || !credentialPayload.privateKey) {
+    throw new Error(
+      "Firebase service account JSON must include project_id, client_email, and private_key."
+    );
+  }
 
   admin.initializeApp({
-    credential: admin.credential.cert(serviceAccount)
+    credential: admin.credential.cert(credentialPayload)
   });
 
   return true;
