@@ -36,6 +36,7 @@ const resolveCompanyRoleForAuth = (user = {}) => {
 };
 
 const normalizePhoneNumber = (value) => String(value || "").trim();
+const isValidTwilioAccountSid = (value) => /^AC[a-f0-9]{32}$/i.test(String(value || "").trim());
 const otpCache = new Map();
 const OTP_TTL_MS = 10 * 60 * 1000;
 
@@ -60,6 +61,18 @@ const readFallbackOtp = (phoneNumber) => {
   return entry;
 };
 
+const selectTwilioSource = (users = []) => {
+  for (const user of users) {
+    const accountSid = String(user?.twilioaccountsid || "").trim();
+    const authToken = String(user?.twilioauthtoken || "").trim();
+    const fromNumber = String(user?.twiliophonenumber || user?.phonenumber || "").trim();
+    if (isValidTwilioAccountSid(accountSid) && authToken && fromNumber) {
+      return { ...user, twilioaccountsid: accountSid, twilioauthtoken: authToken, twiliophonenumber: fromNumber };
+    }
+  }
+  return null;
+};
+
 const getSuperAdminTwilioSource = async () => {
   const preferred = await User.findOne({
     $or: [
@@ -72,11 +85,12 @@ const getSuperAdminTwilioSource = async () => {
     .sort({ updatedAt: -1, createdAt: -1 })
     .lean();
 
-  if (preferred) {
-    return preferred;
+  const preferredTwilio = selectTwilioSource(preferred ? [preferred] : []);
+  if (preferredTwilio) {
+    return preferredTwilio;
   }
 
-  return User.findOne({
+  const fallbackCandidates = await User.find({
     twilioaccountsid: { $exists: true, $ne: "" },
     twilioauthtoken: { $exists: true, $ne: "" },
     $or: [
@@ -87,6 +101,8 @@ const getSuperAdminTwilioSource = async () => {
     .select("username email role twilioaccountsid twilioauthtoken twiliophonenumber phonenumber")
     .sort({ updatedAt: -1, createdAt: -1 })
     .lean();
+
+  return selectTwilioSource(fallbackCandidates);
 };
 
 const resolveTwilioCredentials = async () => {
@@ -100,7 +116,7 @@ const resolveTwilioCredentials = async () => {
     accountSid,
     authToken,
     fromNumber,
-    isReady: Boolean(accountSid && authToken && fromNumber)
+    isReady: Boolean(isValidTwilioAccountSid(accountSid) && authToken && fromNumber)
   };
 };
 
@@ -146,7 +162,7 @@ const startOtp = async (req, res) => {
     if (!twilio.isReady) {
       return res.status(503).json({
         message: "OTP service is not configured",
-        error: "Twilio credentials are missing from the superadmin record"
+        error: "No valid Twilio credentials were found in the superadmin/admin records"
       });
     }
 
