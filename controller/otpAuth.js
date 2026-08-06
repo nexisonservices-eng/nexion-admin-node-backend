@@ -61,11 +61,21 @@ const readFallbackOtp = (phoneNumber) => {
   return entry;
 };
 
+const readDocValue = (doc = {}, keys = []) => {
+  for (const key of keys) {
+    const value = doc?.[key];
+    if (String(value || "").trim()) {
+      return String(value).trim();
+    }
+  }
+  return "";
+};
+
 const selectTwilioSource = (users = []) => {
   for (const user of users) {
-    const accountSid = String(user?.twilioaccountsid || "").trim();
-    const authToken = String(user?.twilioauthtoken || "").trim();
-    const fromNumber = String(user?.twiliophonenumber || user?.phonenumber || "").trim();
+    const accountSid = readDocValue(user, ["twilioaccountsid", "twilioAccountSid"]);
+    const authToken = readDocValue(user, ["twilioauthtoken", "twilioAuthToken"]);
+    const fromNumber = readDocValue(user, ["twiliophonenumber", "twilioPhoneNumber", "phonenumber", "phoneNumber"]);
     if (isValidTwilioAccountSid(accountSid) && authToken && fromNumber) {
       return { ...user, twilioaccountsid: accountSid, twilioauthtoken: authToken, twiliophonenumber: fromNumber };
     }
@@ -74,32 +84,20 @@ const selectTwilioSource = (users = []) => {
 };
 
 const getSuperAdminTwilioSource = async () => {
-  const superAdmin = await User.findOne({
+  const candidates = await User.find({
     $or: [
       { role: "superadmin" },
+      { role: "admin" },
       { email: "admintechnova@gmail.com" },
       { email: "superadmin@technova.com" },
       { username: "Super Admin" }
     ]
   })
-    .select("username email role twilioaccountsid twilioauthtoken twiliophonenumber phonenumber")
+    .select("username email role twilioaccountsid twilioAccountSid twilioauthtoken twilioAuthToken twiliophonenumber twilioPhoneNumber phonenumber phoneNumber")
     .sort({ updatedAt: -1, createdAt: -1 })
     .lean();
 
-  const adminFallback = await User.findOne({
-    role: "admin",
-    twilioaccountsid: { $exists: true, $ne: "" },
-    twilioauthtoken: { $exists: true, $ne: "" },
-    $or: [
-      { twiliophonenumber: { $exists: true, $ne: "" } },
-      { phonenumber: { $exists: true, $ne: "" } }
-    ]
-  })
-    .select("username email role twilioaccountsid twilioauthtoken twiliophonenumber phonenumber")
-    .sort({ updatedAt: -1, createdAt: -1 })
-    .lean();
-
-  return selectTwilioSource([superAdmin, adminFallback].filter(Boolean));
+  return selectTwilioSource(candidates);
 };
 
 const resolveTwilioCredentials = async () => {
