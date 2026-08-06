@@ -82,6 +82,8 @@ const firebaseAuth = async (req, res) => {
       return res.status(503).json({
         message:
           "Firebase Admin is not configured. Set FIREBASE_SERVICE_ACCOUNT_JSON or FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY."
+        ,
+        error: initError.message
       });
     }
 
