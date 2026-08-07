@@ -80,14 +80,17 @@ const firebaseAuth = async (req, res) => {
       admin = getFirebaseAdmin();
     } catch (initError) {
       return res.status(503).json({
-        message:
-          "Firebase Admin is not configured. Set FIREBASE_SERVICE_ACCOUNT_JSON or FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY."
-        ,
-        error: initError.message
+        message: "Firebase Admin is unavailable"
       });
     }
 
-    const decoded = await admin.auth().verifyIdToken(idToken);
+    let decoded;
+    try {
+      decoded = await admin.auth().verifyIdToken(idToken);
+    } catch (verifyError) {
+      return res.status(401).json({ message: "Invalid or expired Firebase ID token" });
+    }
+
     const email = decoded.email || null;
     const emailVerified = decoded.email_verified === true;
     const displayName = decoded.name || "";
