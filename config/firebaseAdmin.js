@@ -44,6 +44,7 @@ const normalizeServiceAccount = (serviceAccount = {}) => {
 const buildCredentialCandidates = () => {
   const candidates = [];
   const envCredentialPath = String(process.env.GOOGLE_APPLICATION_CREDENTIALS || "").trim();
+  const envServiceAccountJson = String(process.env.FIREBASE_SERVICE_ACCOUNT_JSON || "").trim();
 
   if (envCredentialPath) {
     candidates.push(envCredentialPath);
@@ -51,6 +52,9 @@ const buildCredentialCandidates = () => {
 
   candidates.push(RENDER_SERVICE_ACCOUNT_PATH);
   candidates.push(LOCAL_SERVICE_ACCOUNT_PATH);
+  if (envServiceAccountJson) {
+    candidates.push({ type: "json", value: envServiceAccountJson });
+  }
 
   return candidates;
 };
@@ -65,6 +69,32 @@ const readServiceAccountFile = (filePath) => {
 
   const raw = fs.readFileSync(filePath, "utf8");
   return JSON.parse(raw);
+};
+
+const readServiceAccountJson = (rawJson) => {
+  let json = String(rawJson || "").trim();
+  if (!json) return null;
+
+  if (json.startsWith("FIREBASE_SERVICE_ACCOUNT_JSON=")) {
+    json = json.slice("FIREBASE_SERVICE_ACCOUNT_JSON=".length).trim();
+  }
+
+  if ((json.startsWith("'") && json.endsWith("'")) || (json.startsWith('"') && json.endsWith('"'))) {
+    json = json.slice(1, -1).trim();
+  }
+
+  if (!json.startsWith("{")) {
+    const firstBrace = json.indexOf("{");
+    const lastBrace = json.lastIndexOf("}");
+    if (firstBrace >= 0 && lastBrace > firstBrace) {
+      json = json.slice(firstBrace, lastBrace + 1).trim();
+    }
+  }
+
+  if (!json) return null;
+
+  console.log("[Firebase Admin] Credential source found: FIREBASE_SERVICE_ACCOUNT_JSON");
+  return JSON.parse(json);
 };
 
 const initializeFirebaseAdmin = () => {
@@ -93,7 +123,10 @@ const initializeFirebaseAdmin = () => {
 
     for (const candidate of candidates) {
       try {
-        const parsed = readServiceAccountFile(candidate);
+        const parsed =
+          typeof candidate === "string"
+            ? readServiceAccountFile(candidate)
+            : readServiceAccountJson(candidate.value);
         if (parsed) {
           serviceAccount = parsed;
           break;
