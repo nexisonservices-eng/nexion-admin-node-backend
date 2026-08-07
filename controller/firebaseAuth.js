@@ -11,6 +11,9 @@ const {
 const { createTrialSubscription } = require("../utils/billing");
 const { buildSubscriptionContext } = require("./billingController");
 
+const FIREBASE_CREDENTIAL_HELP =
+  "Check /etc/secrets/firebase-service-account.json, config/firebase-service-account.json, GOOGLE_APPLICATION_CREDENTIALS, or FIREBASE_SERVICE_ACCOUNT_JSON.";
+
 const resolveCompanyRoleForAuth = (user = {}) => {
   const normalizedRole = String(user?.role || "").trim().toLowerCase();
   const explicitCompanyRole = String(user?.companyRole || "").trim().toLowerCase();
@@ -80,8 +83,7 @@ const firebaseAuth = async (req, res) => {
       admin = getFirebaseAdmin();
     } catch (initError) {
       return res.status(503).json({
-        message:
-          "Missing Firebase credentials. Check /etc/secrets/firebase-service-account.json, GOOGLE_APPLICATION_CREDENTIALS, or FIREBASE_SERVICE_ACCOUNT_JSON."
+        message: `Missing Firebase credentials. ${FIREBASE_CREDENTIAL_HELP}`
       });
     }
 

@@ -8,7 +8,10 @@ try {
   admin = null;
 }
 
-const LOCAL_SERVICE_ACCOUNT_PATH = path.join(__dirname, "nexion-98f7c-4e49040efb6b.json");
+const LOCAL_SERVICE_ACCOUNT_PATHS = [
+  path.join(__dirname, "firebase-service-account.json"),
+  path.join(__dirname, "nexion-98f7c-4e49040efb6b.json")
+];
 const RENDER_SERVICE_ACCOUNT_PATH = "/etc/secrets/firebase-service-account.json";
 
 let firebaseAdminInitAttempted = false;
@@ -51,7 +54,7 @@ const buildCredentialCandidates = () => {
   }
 
   candidates.push(RENDER_SERVICE_ACCOUNT_PATH);
-  candidates.push(LOCAL_SERVICE_ACCOUNT_PATH);
+  candidates.push(...LOCAL_SERVICE_ACCOUNT_PATHS);
   if (envServiceAccountJson) {
     candidates.push({ type: "json", value: envServiceAccountJson });
   }
