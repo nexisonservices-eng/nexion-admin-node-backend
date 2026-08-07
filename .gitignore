@@ -4,3 +4,4 @@ node_modules/
 npm-debug.log
 .DS_Store
 config/nexion-98f7c-4e49040efb6b.json
+config/firebase-service-account.json
