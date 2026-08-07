@@ -145,6 +145,8 @@ const firebaseAuth = async (req, res) => {
       { expiresIn: "7d" }
     );
 
+    console.log(`[Firebase Auth] Firebase login successful for user ${user._id}`);
+
     return res.status(200).json({
       message: "Login successful",
       token,
