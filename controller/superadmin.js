@@ -19,7 +19,7 @@ const superAdminLogin = async (req, res) => {
     }
 
     // Compare password (plain vs env)
-    const isMatch = password === "Akshaya@123";
+    const isMatch = password === "Superadmin@123";
 
     if (!isMatch) {
       return res.status(401).json({ message: "Invalid credentials" });
