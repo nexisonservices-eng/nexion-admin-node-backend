@@ -34,6 +34,7 @@ const registerAdmin = async (req, res) => {
           username: existingUser.username,
           email: existingUser.email,
           role: existingUser.role,
+          sidebarFeatureFlags: existingUser.sidebarFeatureFlags || {}
         },
       });
     }
@@ -59,13 +60,14 @@ const registerAdmin = async (req, res) => {
     return res.status(201).json({
       message: "Admin registered successfully",
       token,
-      user: {
-        id: newUser._id,
-        username: newUser.username,
-        email: newUser.email,
-        role: newUser.role,
-      },
-    });
+        user: {
+          id: newUser._id,
+          username: newUser.username,
+          email: newUser.email,
+          role: newUser.role,
+          sidebarFeatureFlags: newUser.sidebarFeatureFlags || {}
+        },
+      });
   } catch (error) {
     return res.status(500).json({ message: error.message });
   }

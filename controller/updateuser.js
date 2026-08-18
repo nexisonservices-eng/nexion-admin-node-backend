@@ -153,6 +153,7 @@ const updateUser = async (req, res) => {
         metaPageAccessToken: updatedUser.metaPageAccessToken || updatedUser.metapageaccesstoken || "",
         phoneNumber: updatedUser.phonenumber || "",
         missedCallWebhook: updatedUser.missedcallwebhook || "",
+        sidebarFeatureFlags: updatedUser.sidebarFeatureFlags || {},
       },
     });
   } catch (error) {
