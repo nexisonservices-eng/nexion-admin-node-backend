@@ -41,9 +41,16 @@ const normalizeSidebarFeatureFlags = (flags = {}) => {
   );
 };
 
+const hasSidebarAccessSelection = (flags = {}) =>
+  SIDEBAR_ACCESS_FLAG_KEYS.some((key) => Boolean(flags?.[key]));
+
+const collapseSidebarFeatureFlags = (flags = {}) =>
+  hasSidebarAccessSelection(flags) ? normalizeSidebarFeatureFlags(flags) : {};
+
 module.exports = {
   SIDEBAR_ACCESS_FLAG_KEYS,
   SIDEBAR_ACCESS_DEFAULTS,
-  normalizeSidebarFeatureFlags
+  normalizeSidebarFeatureFlags,
+  hasSidebarAccessSelection,
+  collapseSidebarFeatureFlags
 };
-
