@@ -137,6 +137,10 @@ const UserSchema = new mongoose.Schema(
       type: Boolean,
       default: false
     },
+    sidebarFeatureFlags: {
+      type: Object,
+      default: {}
+    },
     isEnabled: {
       type: Boolean,
       default: false

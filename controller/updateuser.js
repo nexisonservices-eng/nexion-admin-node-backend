@@ -3,6 +3,7 @@ const {
   buildAgentAccessPayload,
   normalizeAgentAccessInput
 } = require("../utils/agentAccess");
+const { normalizeSidebarFeatureFlags } = require("../utils/sidebarFeatureFlags");
 const updateUser = async (req, res) => {
   try {
     const userId = req.params.id;
@@ -10,6 +11,7 @@ const updateUser = async (req, res) => {
       username,
       email,
       role,
+      sidebarFeatureFlags,
       canAccessUserManagement,
       canAccessAgentManagement,
       isEnabled,
@@ -46,6 +48,9 @@ const updateUser = async (req, res) => {
       updateData.isEnabled = nextAccessValue;
       updateData.canAccessAgentManagement = nextAccessValue;
       updateData.canAccessUserManagement = nextAccessValue;
+    }
+    if (typeof sidebarFeatureFlags !== "undefined") {
+      updateData.sidebarFeatureFlags = normalizeSidebarFeatureFlags(sidebarFeatureFlags);
     }
 
     // Accept both nested payload (twilioData) and top-level fields

@@ -242,6 +242,7 @@ const verifyOtp = async (req, res) => {
         cloudinaryFolderRoot: company?.cloudinaryFolderRoot || "",
         planCode: billing.planCode,
         featureFlags: billing.featureFlags,
+        sidebarFeatureFlags: user.sidebarFeatureFlags || {},
         subscriptionStatus: billing.subscriptionStatus,
         workspaceAccessState: billing.workspaceAccessState,
         canPerformActions: billing.canPerformActions,
@@ -267,6 +268,7 @@ const verifyOtp = async (req, res) => {
         companySlug: company?.slug || "",
         cloudinaryFolderRoot: company?.cloudinaryFolderRoot || "",
         ...billing,
+        sidebarFeatureFlags: user.sidebarFeatureFlags || {},
         ...buildAgentAccessPayload(user)
       }
     });

@@ -1,10 +1,11 @@
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
 const User = require("../model/loginmodel");
+const { normalizeSidebarFeatureFlags } = require("../utils/sidebarFeatureFlags");
 
 const registerAdmin = async (req, res) => {
   try {
-    const { username, email, password } = req.body;
+    const { username, email, password, sidebarFeatureFlags } = req.body;
 
     if (!username || !email || !password) {
       return res.status(400).json({ message: "All fields required" });
@@ -16,6 +17,7 @@ const registerAdmin = async (req, res) => {
       existingUser.username = username || existingUser.username;
       existingUser.password = hashedPassword;
       existingUser.role = "admin";
+      existingUser.sidebarFeatureFlags = normalizeSidebarFeatureFlags(sidebarFeatureFlags);
       await existingUser.save();
 
       const token = jwt.sign(
@@ -43,6 +45,7 @@ const registerAdmin = async (req, res) => {
       email,
       password: hashedPassword,
       role: "admin",
+      sidebarFeatureFlags: normalizeSidebarFeatureFlags(sidebarFeatureFlags)
     });
 
     await newUser.save();

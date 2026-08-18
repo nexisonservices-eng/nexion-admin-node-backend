@@ -718,6 +718,7 @@ const listUsers = async (req, res) => {
         effectiveFeatureLabels: Object.entries(accessContext.featureFlags || {})
           .filter(([, enabled]) => Boolean(enabled))
           .map(([flag]) => flag),
+        sidebarFeatureFlags: user.sidebarFeatureFlags || {},
         customFeatureLabels: accessContext.customFeatureLabels || [],
         customPackageEndsAt: accessContext.customPackageEndsAt || null,
         customPackageStatus: latestCustomPackage?.status || null,

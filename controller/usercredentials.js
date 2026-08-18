@@ -124,6 +124,7 @@ const formatUserPayload = async (user, billingOverride = null) => {
     metaJwtSecret: credentials.metaJwtSecret,
     phoneNumber: credentials.phoneNumber,
     missedCallWebhook: credentials.missedCallWebhook,
+    sidebarFeatureFlags: user.sidebarFeatureFlags || {},
     missedCallAutomationEnabled: typeof user.missedcallautomationenabled === 'boolean' ? user.missedcallautomationenabled : true,
     missedCallDelayMinutes: Number.isFinite(Number(user.missedcalldelayminutes)) ? Number(user.missedcalldelayminutes) : 5,
     missedCallAutomationMode: toStr(user.missedcallautomationmode) || 'immediate',
