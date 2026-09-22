@@ -30,6 +30,17 @@ const resolveParentUser = async (req) => {
   return User.findById(parentUserId).lean();
 };
 
+const respondMissingParent = (req, res) => {
+  if (normalizeText(req.user?.role).toLowerCase() === "superadmin") {
+    return res.status(403).json({
+      message: "Sign in with the company admin account to create or manage its agents. The superadmin account has no company workspace."
+    });
+  }
+  return res.status(401).json({
+    message: "Your admin account could not be found. Please sign in again with the company admin account."
+  });
+};
+
 const buildAgentResponse = (agent) => {
   const companyRole = agent.companyRole === "admin" ? "admin" : "user";
   const displayRole = companyRole === "admin" ? "Admin" : "Agent";
@@ -59,7 +70,7 @@ const listAgents = async (req, res) => {
   try {
     const parentUser = await resolveParentUser(req);
     if (!parentUser) {
-      return res.status(200).json({ success: true, data: [] });
+      return respondMissingParent(req, res);
     }
 
     if (!canManageWorkspaceAgents(parentUser)) {
@@ -87,7 +98,7 @@ const createAgent = async (req, res) => {
   try {
     const parentUser = await resolveParentUser(req);
     if (!parentUser) {
-      return res.status(404).json({ message: "Parent user not found" });
+      return respondMissingParent(req, res);
     }
 
     if (!canManageWorkspaceAgents(parentUser)) {
@@ -142,7 +153,7 @@ const updateAgent = async (req, res) => {
   try {
     const parentUser = await resolveParentUser(req);
     if (!parentUser) {
-      return res.status(404).json({ message: "Parent user not found" });
+      return respondMissingParent(req, res);
     }
 
     if (!canManageWorkspaceAgents(parentUser)) {
