@@ -145,23 +145,23 @@ const createAgent = async (req, res) => {
       const slot = [1, 2, 3, 4, 5].find((value) => !occupied.has(value));
       try {
         agent = await User.create({
-      agentWorkspaceKey: String(parentUser.companyId || parentUser._id),
-      agentWorkspaceSlot: slot,
-      username,
-      email,
-      password: hashedPassword,
-      role: "user",
-      companyRole,
-      companyId: parentUser.companyId || null,
-      authProvider: "email",
-      createdBy: parentUser._id,
-      ownerId: parentUser._id,
-      parentUserId: parentUser._id,
-      createdByName: parentUser.username || "",
-      isAgentWorkspace: true,
-      canAccessUserManagement: false,
-      canAccessAgentManagement: false,
-      isEnabled: true
+          agentWorkspaceKey: String(parentUser.companyId || parentUser._id),
+          agentWorkspaceSlot: slot,
+          username,
+          email,
+          password: hashedPassword,
+          role: "user",
+          companyRole,
+          companyId: parentUser.companyId || null,
+          authProvider: "email",
+          createdBy: parentUser._id,
+          ownerId: parentUser._id,
+          parentUserId: parentUser._id,
+          createdByName: parentUser.username || "",
+          isAgentWorkspace: true,
+          canAccessUserManagement: false,
+          canAccessAgentManagement: false,
+          isEnabled: true
         });
         break;
       } catch (error) {
