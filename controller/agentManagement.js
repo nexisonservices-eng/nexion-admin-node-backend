@@ -4,6 +4,16 @@ const User = require("../model/loginmodel");
 const { buildAgentAccessPayload } = require("../utils/agentAccess");
 
 const normalizeText = (value) => String(value || "").trim();
+const MAX_WORKSPACE_AGENTS = 5;
+const agentQuotaScope = (parent) => ({
+  ...(parent.companyId ? { companyId: parent.companyId } : { createdBy: parent._id }),
+  isAgentWorkspace: true,
+  role: { $ne: "superadmin" }
+});
+const limitResponse = (res) => res.status(403).json({
+  code: "AGENT_LIMIT_REACHED",
+  message: "A workspace can have a maximum of 5 agent accounts, including disabled accounts."
+});
 
 const normalizeAgentRole = (value) => {
   const role = normalizeText(value).toLowerCase();
@@ -87,6 +97,8 @@ const listAgents = async (req, res) => {
 
     return res.json({
       success: true,
+      agentLimit: MAX_WORKSPACE_AGENTS,
+      agentCount: await User.countDocuments(agentQuotaScope(parentUser)),
       data: agents.map(buildAgentResponse)
     });
   } catch (error) {
@@ -121,7 +133,20 @@ const createAgent = async (req, res) => {
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
-    const agent = await User.create({
+    // Unique slots serialize competing inserts across server instances. Legacy
+    // accounts without a slot still count toward the workspace total.
+    await User.init();
+    let agent;
+    for (let attempt = 0; attempt < MAX_WORKSPACE_AGENTS; attempt += 1) {
+      const existingAgents = await User.find(agentQuotaScope(parentUser))
+        .select("agentWorkspaceSlot").lean();
+      if (existingAgents.length >= MAX_WORKSPACE_AGENTS) return limitResponse(res);
+      const occupied = new Set(existingAgents.map((entry) => entry.agentWorkspaceSlot));
+      const slot = [1, 2, 3, 4, 5].find((value) => !occupied.has(value));
+      try {
+        agent = await User.create({
+      agentWorkspaceKey: String(parentUser.companyId || parentUser._id),
+      agentWorkspaceSlot: slot,
       username,
       email,
       password: hashedPassword,
@@ -137,7 +162,13 @@ const createAgent = async (req, res) => {
       canAccessUserManagement: false,
       canAccessAgentManagement: false,
       isEnabled: true
-    });
+        });
+        break;
+      } catch (error) {
+        if (error.code !== 11000 || !error.keyPattern?.agentWorkspaceKey) throw error;
+      }
+    }
+    if (!agent) return limitResponse(res);
 
     return res.status(201).json({
       success: true,

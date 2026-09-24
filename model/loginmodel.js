@@ -77,6 +77,8 @@ const UserSchema = new mongoose.Schema(
     ownerId: { type: mongoose.Schema.Types.ObjectId, ref: "admin", default: null },
     parentUserId: { type: mongoose.Schema.Types.ObjectId, ref: "admin", default: null },
     createdByName: { type: String, default: "" },
+    agentWorkspaceKey: { type: String },
+    agentWorkspaceSlot: { type: Number, min: 1, max: 5 },
     isAgentWorkspace: {
       type: Boolean,
       default: false
@@ -161,6 +163,11 @@ resetPasswordExpires: {
 
   },
   { timestamps: true }
+);
+
+UserSchema.index(
+  { agentWorkspaceKey: 1, agentWorkspaceSlot: 1 },
+  { unique: true, partialFilterExpression: { agentWorkspaceKey: { $type: "string" }, agentWorkspaceSlot: { $type: "number" } } }
 );
 
 module.exports = mongoose.model("admin", UserSchema);
