@@ -11,6 +11,7 @@ const Company = require("../model/company");
 const Payment = require("../model/payment");
 const PlanPricing = require("../model/planPricing");
 const Subscription = require("../model/subscription");
+const { parseCashSubscriptionDates } = require('../utils/cashSubscriptionDates');
 const UsageLog = require("../model/usageLog");
 const MetaDocument = require("../model/metaDocument");
 const CustomPackage = require("../model/customPackage");
@@ -75,9 +76,11 @@ const resolvePlanAmount = async ({ planCode, billingCycle, amountOverride = null
   return { pricing, amount };
 };
 
-const activatePaidSubscription = async ({ payment, paymentMethod = "razorpay", paymentReference = "" }) => {
+const activatePaidSubscription = async ({ payment, paymentMethod = "razorpay", paymentReference = "", startsAt: selectedStart, endsAt: selectedEnd }) => {
   const now = new Date();
-  const endsAt = addBillingCycle(now, payment.billingCycle);
+  const startsAt = selectedStart || now;
+  const endsAt = selectedEnd || addBillingCycle(startsAt, payment.billingCycle);
+  const status = endsAt < now ? 'expired' : 'active';
 
   payment.paymentMethod = paymentMethod;
   payment.paymentReference = paymentReference || payment.paymentReference || "";
@@ -89,10 +92,10 @@ const activatePaidSubscription = async ({ payment, paymentMethod = "razorpay", p
   if (subscription) {
     subscription.userId = payment.userId;
     subscription.planCode = payment.planCode;
-    subscription.status = "active";
+    subscription.status = status;
     subscription.billingCycle = payment.billingCycle;
     subscription.paymentMethod = paymentMethod;
-    subscription.startsAt = now;
+    subscription.startsAt = startsAt;
     subscription.endsAt = endsAt;
     subscription.currentOrderId = payment.orderId;
     subscription.currentPaymentId = payment.paymentId || payment.paymentReference || payment.orderId;
@@ -104,10 +107,10 @@ const activatePaidSubscription = async ({ payment, paymentMethod = "razorpay", p
       companyId: payment.companyId,
       userId: payment.userId,
       planCode: payment.planCode,
-      status: "active",
+      status,
       billingCycle: payment.billingCycle,
       paymentMethod,
-      startsAt: now,
+      startsAt,
       endsAt,
       currentOrderId: payment.orderId,
       currentPaymentId: payment.paymentId || payment.paymentReference || payment.orderId,
@@ -482,6 +485,12 @@ const verifySubscriptionPayment = async (req, res) => {
 
 const createCashPayment = async (req, res) => {
   try {
+    let subscriptionDates;
+    try {
+      subscriptionDates = parseCashSubscriptionDates(req.body);
+    } catch (error) {
+      return res.status(400).json({ message: error.message });
+    }
     const actorId = getActorObjectIdOrNull(req);
     const { userId } = req.params;
     if (!userId || !mongoose.Types.ObjectId.isValid(userId)) {
@@ -550,7 +559,8 @@ const createCashPayment = async (req, res) => {
     const activation = await activatePaidSubscription({
       payment,
       paymentMethod: "cash",
-      paymentReference
+      paymentReference,
+      ...subscriptionDates
     });
 
     emitEvent(req, "payment.updated", {
@@ -564,7 +574,7 @@ const createCashPayment = async (req, res) => {
       userId: String(targetUser._id),
       companyId: String(targetUser.companyId || ""),
       planCode,
-      subscriptionStatus: "active",
+      subscriptionStatus: activation.subscription.status,
       workspaceAccessState: activation.context?.workspaceAccessState || "active",
       canPerformActions: activation.context?.canPerformActions ?? true,
       canViewAnalytics: activation.context?.canViewAnalytics ?? true
@@ -578,7 +588,7 @@ const createCashPayment = async (req, res) => {
 
     return res.json({
       success: true,
-      message: "Cash payment recorded and access activated",
+      message: "Cash payment recorded and subscription dates saved",
       data: {
         paymentId: paymentReference,
         orderId: paymentReference,
@@ -586,7 +596,9 @@ const createCashPayment = async (req, res) => {
         paymentReference,
         planCode,
         billingCycle,
-        subscriptionStatus: "active",
+        subscriptionStatus: activation.subscription.status,
+        startsAt: activation.subscription.startsAt,
+        endsAt: activation.subscription.endsAt,
         context: activation.context
       }
     });
@@ -702,6 +714,9 @@ const listUsers = async (req, res) => {
         companyName: company?.name || "",
         planCode: accessContext.planCode,
         subscriptionStatus: accessContext.subscriptionStatus,
+        subscriptionStartsAt: latestSubscription?.startsAt || null,
+        subscriptionEndsAt: latestSubscription?.endsAt || null,
+        subscriptionBillingCycle: latestSubscription?.billingCycle || null,
         latestPaymentMethod: latestPayment?.paymentMethod || "",
         latestPaymentStatus: latestPayment?.status || "",
         latestPaymentAmount: Number(latestPayment?.amount || 0),
