@@ -329,6 +329,8 @@ const resolveSubscriptionStatus = async (subscription) => {
       featureFlags: PLAN_FEATURES.trial,
       trialStart: null,
       trialEnd: null,
+      subscriptionStartsAt: null,
+      subscriptionEndsAt: null,
       trialUsage: buildUsageSnapshot(null),
       trialLimits: buildTrialLimitsSnapshot(null)
     };
@@ -354,6 +356,8 @@ const resolveSubscriptionStatus = async (subscription) => {
     paymentMethod: String(subscription.paymentMethod || "razorpay").toLowerCase(),
     featureFlags: await resolveFeatureFlagsForPlan(planCode),
     trialStart: startsAt,
+    subscriptionStartsAt: startsAt,
+    subscriptionEndsAt: endsAt,
     trialEnd: planCode === "trial" ? endsAt : null,
     trialUsage: buildUsageSnapshot(subscription),
     trialLimits: buildTrialLimitsSnapshot(subscription)

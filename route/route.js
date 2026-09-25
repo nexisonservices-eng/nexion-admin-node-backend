@@ -104,6 +104,7 @@ router.get("/api/admin/plan-pricing", protect, requireSuperAdmin, billingControl
 router.put("/api/admin/plan-pricing", protect, requireSuperAdmin, billingController.updatePlanPricing);
 router.get("/api/admin/payments", protect, requireSuperAdmin, billingController.listPayments);
 router.get("/api/admin/subscriptions", protect, requireSuperAdmin, billingController.listSubscriptions);
+router.put("/api/admin/subscriptions/:id/dates", protect, requireSuperAdmin, billingController.updateSubscriptionDates);
 router.get("/api/admin/companies", protect, requireSuperAdmin, adminManagement.getCompanies);
 router.patch("/api/admin/companies/:id/disable", protect, requireSuperAdmin, adminManagement.disableCompany);
 router.put("/api/edit/:id", protect, requireSuperAdmin, updateUser);

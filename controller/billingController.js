@@ -750,6 +750,33 @@ const listUsers = async (req, res) => {
   }
 };
 
+const updateSubscriptionDates = async (req, res) => {
+  const { startsAt, endsAt } = req.body || {};
+  if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+    return res.status(400).json({ message: "Invalid subscription ID" });
+  }
+  const start = typeof startsAt === "string" ? new Date(startsAt) : new Date(NaN);
+  const end = typeof endsAt === "string" ? new Date(endsAt) : new Date(NaN);
+  if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime()) || end <= start) {
+    return res.status(400).json({ message: "Enter valid dates with the end date after the start date." });
+  }
+  try {
+    const subscription = await Subscription.findById(req.params.id);
+    if (!subscription) return res.status(404).json({ message: "Subscription not found" });
+    subscription.startsAt = start;
+    subscription.endsAt = end;
+    if (["active", "trialing", "expired"].includes(subscription.status)) {
+      subscription.status = end < new Date() ? "expired" : subscription.planCode === "trial" ? "trialing" : "active";
+    }
+    await subscription.save();
+    emitEvent(req, "payment.updated", { subscriptionId: subscription._id });
+    emitEvent(req, "workspace.access.updated", { companyId: subscription.companyId, userId: subscription.userId });
+    return res.json({ success: true, message: "Subscription dates saved.", data: subscription });
+  } catch (error) {
+    return res.status(500).json({ message: "Failed to update subscription dates", error: error.message });
+  }
+};
+
 const listSubscriptions = async (req, res) => {
   try {
     const rows = await Subscription.find({})
@@ -1090,6 +1117,7 @@ module.exports = {
   listPayments,
   listPublicPlanPricing,
   listSubscriptions,
+  updateSubscriptionDates,
   listUsers,
   saveCustomPackageDraft,
   createCustomPackagePaymentLink,
