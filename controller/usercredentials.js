@@ -4,7 +4,7 @@ const Company = require('../model/company');
 const { buildAgentAccessPayload } = require('../utils/agentAccess');
 const { buildCompanyCloudinaryRoot } = require('../config/cloudinary');
 const { buildSubscriptionContext } = require('./billingController');
-const { getWorkspaceReadUserIds } = require('../utils/workspaceReadScope');
+const { getWorkspaceCreators } = require('../utils/workspaceReadScope');
 
 const credentialFieldMap = {
   twilioAccountSid: 'twilioaccountsid',
@@ -92,6 +92,7 @@ const formatUserPayload = async (user, billingOverride = null) => {
   const billing = billingOverride || (await buildSubscriptionContext(user));
   const { credentials } = await buildCredentialSnapshot(user);
   const companyRole = resolveCompanyRole(user);
+  const workspaceCreators = await getWorkspaceCreators(user, companyRole);
   const companySnapshot = await resolveCompanySnapshot(user);
   return {
     userId: user._id,
@@ -106,7 +107,8 @@ const formatUserPayload = async (user, billingOverride = null) => {
     companyId: user.companyId || null,
     companyRole,
     ...companySnapshot,
-    workspaceReadUserIds: await getWorkspaceReadUserIds(user, companyRole),
+    workspaceReadUserIds: workspaceCreators.map((creator) => creator.id),
+    workspaceCreators,
     ...billing,
     twilioAccountSid: credentials.twilioAccountSid,
     twilioAuthToken: credentials.twilioAuthToken,
