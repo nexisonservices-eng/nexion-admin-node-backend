@@ -59,6 +59,7 @@ router.use("/api/email-dashboard", emailDashboardRoutes);
 
 router.get("/api/user/credentials", protect, getUserCredentials);
 router.get("/api/agents", protect, agentManagement.listAgents);
+router.get('/api/agent-activity/:kind', protect, require('../controller/agentActivity'));
 router.post("/api/agents", protect, agentManagement.createAgent);
 router.put("/api/agents/:id", protect, agentManagement.updateAgent);
 router.get("/api/plan-pricing", billingController.listPublicPlanPricing);
