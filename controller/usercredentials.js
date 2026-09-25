@@ -95,6 +95,9 @@ const formatUserPayload = async (user, billingOverride = null) => {
   const workspaceCreators = await getWorkspaceCreators(user, companyRole);
   const companySnapshot = await resolveCompanySnapshot(user);
   return {
+    // Billing may contain legacy companyRole values. Account identity and the
+    // resolved workspace role below must remain authoritative for API access.
+    ...billing,
     userId: user._id,
     role: user.role,
     ...buildAgentAccessPayload({ ...user, companyRole, role: user.role || 'user' }),
@@ -109,7 +112,6 @@ const formatUserPayload = async (user, billingOverride = null) => {
     ...companySnapshot,
     workspaceReadUserIds: workspaceCreators.map((creator) => creator.id),
     workspaceCreators,
-    ...billing,
     twilioAccountSid: credentials.twilioAccountSid,
     twilioAuthToken: credentials.twilioAuthToken,
     twilioPhoneNumber: credentials.twilioPhoneNumber || credentials.phoneNumber,
