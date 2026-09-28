@@ -89,10 +89,10 @@ const agentRequest = { user: { id: adminId }, body: {
   fullName: "Agent", email: "agent@example.com", password: "password", role: "Agent"
 } };
 
-test("five existing accounts, including disabled agents, block creation", async () => {
+test("eight existing accounts, including disabled agents, block creation", async () => {
   const { controller, writes, scopes } = loadController(
     { _id: adminId, role: "admin", companyId: "shared-company" },
-    Array.from({ length: 5 }, () => ({ isEnabled: false }))
+    Array.from({ length: 8 }, () => ({ isEnabled: false }))
   );
   const res = response();
   await controller.createAgent(agentRequest, res);
@@ -104,9 +104,9 @@ test("five existing accounts, including disabled agents, block creation", async 
   assert.equal(scopes[0].isEnabled, undefined);
 });
 
-test("concurrent requests with four legacy agents only create the fifth", async () => {
+test("concurrent requests with seven legacy agents only create the eighth", async () => {
   const { controller, writes, scopes } = loadController(
-    { _id: adminId, role: "admin" }, Array.from({ length: 4 }, () => ({}))
+    { _id: adminId, role: "admin" }, Array.from({ length: 7 }, () => ({}))
   );
   const responses = [response(), response(), response()];
   await Promise.all(responses.map((res) => controller.createAgent(agentRequest, res)));
