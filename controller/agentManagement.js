@@ -4,7 +4,7 @@ const User = require("../model/loginmodel");
 const { buildAgentAccessPayload } = require("../utils/agentAccess");
 
 const normalizeText = (value) => String(value || "").trim();
-const MAX_WORKSPACE_AGENTS = 5;
+const MAX_WORKSPACE_AGENTS = 8;
 const agentQuotaScope = (parent) => ({
   ...(parent.companyId ? { companyId: parent.companyId } : { createdBy: parent._id }),
   isAgentWorkspace: true,
@@ -12,7 +12,7 @@ const agentQuotaScope = (parent) => ({
 });
 const limitResponse = (res) => res.status(403).json({
   code: "AGENT_LIMIT_REACHED",
-  message: "A workspace can have a maximum of 5 agent accounts, including disabled accounts."
+  message: "A workspace can have a maximum of 8 agent accounts, including disabled accounts."
 });
 
 const normalizeAgentRole = (value) => {
@@ -142,7 +142,8 @@ const createAgent = async (req, res) => {
         .select("agentWorkspaceSlot").lean();
       if (existingAgents.length >= MAX_WORKSPACE_AGENTS) return limitResponse(res);
       const occupied = new Set(existingAgents.map((entry) => entry.agentWorkspaceSlot));
-      const slot = [1, 2, 3, 4, 5].find((value) => !occupied.has(value));
+      const slot = Array.from({ length: MAX_WORKSPACE_AGENTS }, (_, index) => index + 1)
+        .find((value) => !occupied.has(value));
       try {
         agent = await User.create({
           agentWorkspaceKey: String(parentUser.companyId || parentUser._id),

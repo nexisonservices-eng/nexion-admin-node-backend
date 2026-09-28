@@ -78,7 +78,7 @@ const UserSchema = new mongoose.Schema(
     parentUserId: { type: mongoose.Schema.Types.ObjectId, ref: "admin", default: null },
     createdByName: { type: String, default: "" },
     agentWorkspaceKey: { type: String },
-    agentWorkspaceSlot: { type: Number, min: 1, max: 5 },
+    agentWorkspaceSlot: { type: Number, min: 1, max: 8 },
     isAgentWorkspace: {
       type: Boolean,
       default: false
