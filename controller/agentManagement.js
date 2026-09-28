@@ -245,8 +245,40 @@ const updateAgent = async (req, res) => {
   }
 };
 
+const deleteAgent = async (req, res) => {
+  try {
+    const parentUser = await resolveParentUser(req);
+    if (!parentUser) {
+      return respondMissingParent(req, res);
+    }
+
+    if (!canManageWorkspaceAgents(parentUser)) {
+      return res.status(403).json({ message: "Access denied. Admin workspace only." });
+    }
+
+    const { id } = req.params;
+    if (!id || !mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: "Valid agent id is required" });
+    }
+
+    const agent = await User.findOneAndDelete({
+      _id: id,
+      createdBy: parentUser._id,
+      isAgentWorkspace: true
+    });
+    if (!agent) {
+      return res.status(404).json({ message: "Agent not found" });
+    }
+
+    return res.json({ success: true, message: "Agent deleted successfully" });
+  } catch (error) {
+    return res.status(500).json({ message: "Failed to delete agent", error: error.message });
+  }
+};
+
 module.exports = {
   listAgents,
   createAgent,
-  updateAgent
+  updateAgent,
+  deleteAgent
 };

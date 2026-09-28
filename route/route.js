@@ -62,6 +62,7 @@ router.get("/api/agents", protect, agentManagement.listAgents);
 router.get('/api/agent-activity/:kind', protect, require('../controller/agentActivity'));
 router.post("/api/agents", protect, agentManagement.createAgent);
 router.put("/api/agents/:id", protect, agentManagement.updateAgent);
+router.delete("/api/agents/:id", protect, agentManagement.deleteAgent);
 router.get("/api/plan-pricing", billingController.listPublicPlanPricing);
 router.post("/api/subscriptions/create", protect, requireCompany, billingController.createSubscriptionOrder);
 router.post("/api/payments/verify", protect, requireCompany, billingController.verifySubscriptionPayment);
