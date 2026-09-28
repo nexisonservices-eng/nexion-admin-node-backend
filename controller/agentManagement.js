@@ -106,6 +106,54 @@ const listAgents = async (req, res) => {
   }
 };
 
+const listWorkspaceUsers = async (req, res) => {
+  try {
+    const actor = await resolveParentUser(req);
+    if (!actor) return respondMissingParent(req, res);
+    if (String(actor.role || '').toLowerCase() === 'superadmin') {
+      return res.status(403).json({ message: 'Use the superadmin user directory for this account.' });
+    }
+
+    const actorId = String(actor._id);
+    const canManageAgents = canManageWorkspaceAgents(actor);
+    const relatedIds = new Set([actorId]);
+    if (!canManageAgents) {
+      [actor.createdBy, actor.ownerId, actor.parentUserId]
+        .filter(Boolean)
+        .forEach((id) => relatedIds.add(String(id)));
+    }
+
+    const userFilter = canManageAgents
+      ? {
+          $or: [
+            { _id: actor._id },
+            { createdBy: actor._id },
+            { ownerId: actor._id },
+            { parentUserId: actor._id },
+            ...(actor.companyId ? [{ companyId: actor.companyId, isAgentWorkspace: true }] : [])
+          ],
+          role: { $ne: 'superadmin' }
+        }
+      : { _id: { $in: [...relatedIds] }, role: { $ne: 'superadmin' } };
+
+    const users = await User.find(userFilter)
+      .select('_id username email role companyRole companyId createdBy ownerId parentUserId isAgentWorkspace')
+      .sort({ createdAt: -1 })
+      .lean();
+
+    return res.json({
+      success: true,
+      data: users.map((user) => ({
+        ...buildAgentResponse(user),
+        name: user.username || user.email || '',
+        displayName: user.username || user.email || ''
+      }))
+    });
+  } catch (error) {
+    return res.status(500).json({ message: 'Failed to fetch workspace users', error: error.message });
+  }
+};
+
 const createAgent = async (req, res) => {
   try {
     const parentUser = await resolveParentUser(req);
@@ -279,6 +327,7 @@ const deleteAgent = async (req, res) => {
 
 module.exports = {
   listAgents,
+  listWorkspaceUsers,
   createAgent,
   updateAgent,
   deleteAgent
