@@ -66,6 +66,7 @@ const buildAgentResponse = (agent) => {
     displayRole,
     ...accessPayload,
     isEnabled: accessPayload.isEnabled,
+    isActive: agent.isActive !== false,
     createdBy: agent.createdBy || null,
     ownerId: agent.ownerId || agent.createdBy || null,
     parentUserId: agent.parentUserId || agent.createdBy || null,
@@ -137,7 +138,7 @@ const listWorkspaceUsers = async (req, res) => {
       : { _id: { $in: [...relatedIds] }, role: { $ne: 'superadmin' } };
 
     const users = await User.find(userFilter)
-      .select('_id username email role companyRole companyId createdBy ownerId parentUserId isAgentWorkspace')
+      .select('_id username email role companyRole companyId createdBy ownerId parentUserId isAgentWorkspace isEnabled isActive')
       .sort({ createdAt: -1 })
       .lean();
 
