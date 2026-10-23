@@ -14,6 +14,7 @@ const Subscription = require("../model/subscription");
 const { parseCashSubscriptionDates } = require('../utils/cashSubscriptionDates');
 const UsageLog = require("../model/usageLog");
 const MetaDocument = require("../model/metaDocument");
+const { serializeUserRosterUser } = require("../utils/userRoster");
 const CustomPackage = require("../model/customPackage");
 const { buildAgentAccessPayload } = require("../utils/agentAccess");
 const {
@@ -765,6 +766,27 @@ const listUsers = async (req, res) => {
   }
 };
 
+const listUserRoster = async (req, res) => {
+  try {
+    const companyId = String(req.query?.companyId || '').trim();
+    if (!mongoose.Types.ObjectId.isValid(companyId)) {
+      return res.status(400).json({ success: false, message: 'A valid companyId is required.' });
+    }
+
+    const users = await User.find({ companyId })
+      .select('_id username email role companyRole companyId isEnabled isActive')
+      .sort({ createdAt: -1 })
+      .lean();
+
+    return res.json({
+      success: true,
+      data: users.map(serializeUserRosterUser)
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: 'Failed to fetch workspace user roster.' });
+  }
+};
+
 const updateSubscriptionDates = async (req, res) => {
   const { startsAt, endsAt } = req.body || {};
   if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
@@ -1134,6 +1156,7 @@ module.exports = {
   listSubscriptions,
   updateSubscriptionDates,
   listUsers,
+  listUserRoster,
   saveCustomPackageDraft,
   createCustomPackagePaymentLink,
   verifyCustomPackagePayment,

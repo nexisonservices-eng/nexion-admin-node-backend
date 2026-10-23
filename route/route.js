@@ -90,6 +90,7 @@ router.post("/internal/usage/record", billingController.recordInternalUsage);
 router.post("/internal/ivr/log", requireInternalApiKey, ivrLogs.recordConversation);
 
 router.get("/api/getadmin", protect, requireSuperAdmin, getAdmins);
+router.get("/api/admin/users/roster", protect, requireSuperAdmin, billingController.listUserRoster);
 router.get("/api/admin/users", protect, requireSuperAdmin, billingController.listUsers);
 router.post("/api/admin/users/:userId/custom-package/draft", protect, requireSuperAdmin, billingController.saveCustomPackageDraft);
 router.post("/api/admin/users/:userId/custom-package/payment-link", protect, requireSuperAdmin, billingController.createCustomPackagePaymentLink);
