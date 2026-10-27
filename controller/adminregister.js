@@ -16,6 +16,7 @@ const registerAdmin = async (req, res) => {
       const hashedPassword = await bcrypt.hash(password, 10);
       existingUser.username = username || existingUser.username;
       existingUser.password = hashedPassword;
+      existingUser.passwordChangedAt = new Date();
       existingUser.role = "admin";
       existingUser.sidebarFeatureFlags = collapseSidebarFeatureFlags(sidebarFeatureFlags);
       await existingUser.save();
@@ -45,6 +46,7 @@ const registerAdmin = async (req, res) => {
       username,
       email,
       password: hashedPassword,
+      passwordChangedAt: new Date(),
       role: "admin",
       sidebarFeatureFlags: collapseSidebarFeatureFlags(sidebarFeatureFlags)
     });

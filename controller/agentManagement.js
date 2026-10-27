@@ -200,6 +200,7 @@ const createAgent = async (req, res) => {
           username,
           email,
           password: hashedPassword,
+          passwordChangedAt: new Date(),
           role: "user",
           companyRole,
           companyId: parentUser.companyId || null,

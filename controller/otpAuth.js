@@ -222,6 +222,8 @@ const verifyOtp = async (req, res) => {
     }
 
     await ensureOtpCompany(user);
+    user.lastLoginAt = new Date();
+    await user.save();
     const subscription = await getLatestSubscriptionForCompany(user.companyId);
     if (!subscription) {
       await createTrialSubscription({ companyId: user.companyId, userId: user._id });

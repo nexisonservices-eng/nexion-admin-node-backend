@@ -121,6 +121,8 @@ const firebaseAuth = async (req, res) => {
     }
 
     await resolveOrCreateCompany({ user, displayName });
+    user.lastLoginAt = new Date();
+    await user.save();
     const company = user.companyId ? await Company.findById(user.companyId).lean() : null;
     const billing = await buildSubscriptionContext(user);
     const companyRole = resolveCompanyRoleForAuth(user);
