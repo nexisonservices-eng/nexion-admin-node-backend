@@ -4,7 +4,23 @@ const mongoose = require("mongoose");
 const User = require("../model/loginmodel");
 const Company = require("../model/company");
 
-const customerQuery = { role: { $ne: "superadmin" }, isAgentWorkspace: { $ne: true }, companyRole: "admin" };
+const customerQuery = {
+  role: { $nin: ["superadmin"] },
+  isAgentWorkspace: { $ne: true },
+  $or: [
+    { companyRole: "admin" },
+    { role: "admin" },
+    { canAccessUserManagement: true },
+    { canAccessAgentManagement: true },
+    {
+      $and: [
+        { $or: [{ createdBy: null }, { createdBy: { $exists: false } }] },
+        { $or: [{ ownerId: null }, { ownerId: { $exists: false } }] },
+        { $or: [{ parentUserId: null }, { parentUserId: { $exists: false } }] }
+      ]
+    }
+  ]
+};
 const agentOwnerQuery = (customer) => ({
   isAgentWorkspace: true,
   role: { $ne: "superadmin" },
@@ -25,7 +41,11 @@ const customerSummary = (user, company, agentCount = 0) => ({
   id: String(user._id),
   name: String(company?.name || user.username || user.email || "Customer"),
   email: user.email || "",
+  phoneNumber: user.phonenumber || "",
+  accountRole: user.companyRole || user.role || "user",
+  authProvider: user.authProvider || "email",
   companyId: company?._id ? String(company._id) : null,
+  companyName: company?.name || "",
   agentCount,
   status: accountStatus(user, company),
   createdAt: user.createdAt || null,
@@ -45,13 +65,13 @@ const agentSummary = (agent) => ({
 
 const findCustomer = async (id) => {
   if (!mongoose.Types.ObjectId.isValid(id)) return null;
-  return User.findOne({ _id: id, ...customerQuery }).select("_id username email companyId createdAt lastLoginAt passwordChangedAt isEnabled isActive").lean();
+  return User.findOne({ _id: id, ...customerQuery }).select("_id username email phonenumber role companyRole authProvider companyId createdAt lastLoginAt passwordChangedAt isEnabled isActive").lean();
 };
 
 const listCustomers = async (_req, res) => {
   try {
     const users = await User.find(customerQuery)
-      .select("_id username email companyId createdAt lastLoginAt passwordChangedAt isEnabled isActive")
+      .select("_id username email phonenumber role companyRole authProvider companyId createdAt lastLoginAt passwordChangedAt isEnabled isActive")
       .sort({ createdAt: -1 }).lean();
     const companyIds = [...new Set(users.map((user) => String(user.companyId || "")).filter(Boolean))];
     const companies = await Company.find({ _id: { $in: companyIds } }).select("_id name status").lean();
