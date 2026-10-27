@@ -100,6 +100,9 @@ const loginuser = async (req, res) => {
       });
     }
 
+    user.lastLoginAt = new Date();
+    await user.save();
+
     // 3. Create token
     await ensureTrialForUser(user);
     let company = null;
@@ -189,7 +192,8 @@ const loginuser = async (req, res) => {
         whatsappToken: user.whatsapptoken || "",
         whatsappBusiness: user.whatsappbussiness || "",
         phoneNumber: user.phonenumber || "",
-        missedCallWebhook: user.missedcallwebhook || ""
+        missedCallWebhook: user.missedcallwebhook || "",
+        mustChangePassword: user.mustChangePassword === true
       },
     });
 

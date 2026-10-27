@@ -274,6 +274,8 @@ const updateAgent = async (req, res) => {
       const nextPassword = normalizeText(payload.password);
       if (nextPassword) {
         agent.password = await bcrypt.hash(nextPassword, 10);
+        agent.passwordChangedAt = new Date();
+        agent.mustChangePassword = false;
       }
     }
     if (Object.prototype.hasOwnProperty.call(payload, "role")) {
