@@ -58,7 +58,8 @@ router.post("/api/nexion/logout", authMiddleware, logout);
 router.post("/api/email/bulk-send", protect, bulkEmail.sendBulkEmail);
 router.use("/api/email-dashboard", emailDashboardRoutes);
 
-router.get("/api/user/credentials", protect, getUserCredentials);
+// Validate blacklist-based logout before the normal credential/user hydration.
+router.get("/api/user/credentials", authMiddleware, protect, getUserCredentials);
 router.get("/api/agents", protect, agentManagement.listAgents);
 router.get("/api/crm/ops/users", protect, agentManagement.listWorkspaceUsers);
 router.get('/api/agent-activity/:kind', protect, require('../controller/agentActivity'));
