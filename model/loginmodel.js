@@ -13,6 +13,9 @@ const UserSchema = new mongoose.Schema(
     password: {
       type: String,
     },
+    passwordChangedAt: { type: Date },
+    lastLoginAt: { type: Date },
+    mustChangePassword: { type: Boolean, default: false },
     twilioaccountsid:{
       type:String
     },

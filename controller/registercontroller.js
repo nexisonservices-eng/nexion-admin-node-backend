@@ -28,6 +28,7 @@ const registeruser = async (req, res) => {
       username,
       email,
       password: hashedPassword,
+      passwordChangedAt: new Date(),
       role: "user",
       createdBy: null,
       createdByName: null,

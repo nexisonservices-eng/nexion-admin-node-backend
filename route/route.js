@@ -26,6 +26,7 @@ const adminManagement = require("../controller/adminManagement");
 const bulkEmail = require("../controller/bulkEmail");
 const emailDashboardRoutes = require("./emailDashboard");
 const agentManagement = require("../controller/agentManagement");
+const customerAgentHandling = require("../controller/customerAgentHandling");
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage() });
@@ -57,13 +58,15 @@ router.post("/api/nexion/logout", authMiddleware, logout);
 router.post("/api/email/bulk-send", protect, bulkEmail.sendBulkEmail);
 router.use("/api/email-dashboard", emailDashboardRoutes);
 
-router.get("/api/user/credentials", protect, getUserCredentials);
+// Validate blacklist-based logout before the normal credential/user hydration.
+router.get("/api/user/credentials", authMiddleware, protect, getUserCredentials);
 router.get("/api/agents", protect, agentManagement.listAgents);
 router.get("/api/crm/ops/users", protect, agentManagement.listWorkspaceUsers);
 router.get('/api/agent-activity/:kind', protect, require('../controller/agentActivity'));
 router.post("/api/agents", protect, agentManagement.createAgent);
 router.put("/api/agents/:id", protect, agentManagement.updateAgent);
 router.delete("/api/agents/:id", protect, agentManagement.deleteAgent);
+router.put("/api/account/password", protect, customerAgentHandling.changeOwnPassword);
 router.get("/api/plan-pricing", billingController.listPublicPlanPricing);
 router.post("/api/subscriptions/create", protect, requireCompany, billingController.createSubscriptionOrder);
 router.post("/api/payments/verify", protect, requireCompany, billingController.verifySubscriptionPayment);
@@ -92,6 +95,11 @@ router.post("/internal/ivr/log", requireInternalApiKey, ivrLogs.recordConversati
 router.get("/api/getadmin", protect, requireSuperAdmin, getAdmins);
 router.get("/api/admin/users/roster", protect, requireSuperAdmin, billingController.listUserRoster);
 router.get("/api/admin/users", protect, requireSuperAdmin, billingController.listUsers);
+router.get("/api/super-admin/customer-agent/customers", protect, requireSuperAdmin, customerAgentHandling.listCustomers);
+router.get("/api/super-admin/customer-agent/customers/:customerId", protect, requireSuperAdmin, customerAgentHandling.getCustomer);
+router.get("/api/super-admin/customer-agent/customers/:customerId/agents/:agentId", protect, requireSuperAdmin, customerAgentHandling.getAgent);
+router.post("/api/super-admin/customer-agent/customers/:customerId/reset-password", protect, requireSuperAdmin, customerAgentHandling.resetPassword);
+router.post("/api/super-admin/customer-agent/customers/:customerId/agents/:agentId/reset-password", protect, requireSuperAdmin, customerAgentHandling.resetPassword);
 router.post("/api/admin/users/:userId/custom-package/draft", protect, requireSuperAdmin, billingController.saveCustomPackageDraft);
 router.post("/api/admin/users/:userId/custom-package/payment-link", protect, requireSuperAdmin, billingController.createCustomPackagePaymentLink);
 router.post("/api/admin/custom-package/payments/verify", protect, requireSuperAdmin, billingController.verifyCustomPackagePayment);

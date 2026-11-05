@@ -25,6 +25,8 @@ const resetPassword = async (req, res) => {
     
     const salt = await bcrypt.genSalt(10);
     user.password = await bcrypt.hash(password, salt);
+    user.passwordChangedAt = new Date();
+    user.mustChangePassword = false;
 
     
     user.resetPasswordToken = undefined;
