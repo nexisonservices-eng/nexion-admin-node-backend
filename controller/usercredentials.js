@@ -60,32 +60,62 @@ const resolveCompanySnapshot = async (user = {}) => {
 };
 
 const resolveCredentialSource = async (user = {}) => {
+  const hasWhatsAppCredentials = (candidate) =>
+    Boolean(
+      isNonEmpty(candidate?.whatsappid) &&
+      isNonEmpty(candidate?.whatsapptoken) &&
+      isNonEmpty(candidate?.whatsappbussiness)
+    );
   const ids = [user.createdBy, user.parentUserId, user.ownerId].map(toStr).filter(Boolean);
   for (const id of ids) {
     if (!mongoose.Types.ObjectId.isValid(id)) continue;
     const src = await User.findById(id).lean();
-    if (src) return src;
+    if (hasWhatsAppCredentials(src)) return src;
   }
   if (user.companyId && mongoose.Types.ObjectId.isValid(String(user.companyId))) {
-    const src = await User.findOne({
+    const company = await Company.findById(user.companyId).select('createdBy').lean();
+    const companyOwnerId = toStr(company?.createdBy);
+    if (companyOwnerId && companyOwnerId !== toStr(user._id)) {
+      const owner = await User.findById(companyOwnerId).lean();
+      if (hasWhatsAppCredentials(owner)) return owner;
+    }
+
+    // Legacy users may not have an explicit company owner. Inherit only when
+    // there is exactly one eligible admin; an arbitrary findOne can select a
+    // different client's/test WABA when several admins share a company.
+    const candidates = await User.find({
       companyId: user.companyId,
       _id: { $ne: user._id },
       $or: [{ companyRole: 'admin' }, { role: 'admin' }]
-    }).lean();
-    if (src) return src;
+    })
+      .select('_id twilioaccountsid twilioauthtoken twiliophonenumber whatsappid whatsapptoken whatsappbussiness metaappid metaappsecret metaredirecturi metauseraccesstoken metaadaccountid metaLeadFormId metaPageAccessToken metaPaymentFundUrl metaapiversion metajwtsecret phonenumber missedcallwebhook')
+      .limit(2)
+      .lean();
+    const eligible = (Array.isArray(candidates) ? candidates : []).filter(hasWhatsAppCredentials);
+    if (eligible.length === 1) return eligible[0];
   }
   return null;
 };
 
 const buildCredentialSnapshot = async (user = {}) => {
   const inherited = await resolveCredentialSource(user);
+  const userOwnsWhatsAppCredentials =
+    isNonEmpty(user?.whatsappid) &&
+    isNonEmpty(user?.whatsapptoken) &&
+    isNonEmpty(user?.whatsappbussiness);
   const creds = {};
   for (const [publicKey, dbKey] of Object.entries(credentialFieldMap)) {
     const primary = user?.[dbKey];
     const fallback = inherited?.[dbKey];
     creds[publicKey] = isNonEmpty(primary) ? toStr(primary) : isNonEmpty(fallback) ? toStr(fallback) : '';
   }
-  return { credentials: creds, inheritedSource: inherited };
+  return {
+    credentials: creds,
+    inheritedSource: inherited,
+    whatsappCredentialOwnerUserId: userOwnsWhatsAppCredentials
+      ? user._id
+      : inherited?._id || user._id
+  };
 };
 
 const formatUserPayload = async (user, billingOverride = null) => {
@@ -167,7 +197,7 @@ const getUserCredentials = async (req, res) => {
     }
 
     const formattedUser = await formatUserPayload(user, user.role === 'superadmin' ? { planCode: 'enterprise', subscriptionStatus: 'active', featureFlags: {} } : null);
-    const { credentials, inheritedSource } = await buildCredentialSnapshot(user);
+    const { credentials, whatsappCredentialOwnerUserId } = await buildCredentialSnapshot(user);
     return res.json({
       success: true,
       data: {
@@ -188,7 +218,7 @@ const getUserCredentials = async (req, res) => {
         metaApiVersion: credentials.metaApiVersion,
         metaJwtSecret: credentials.metaJwtSecret,
         companyRole: formattedUser.companyRole,
-        credentialOwnerUserId: inheritedSource?._id || user._id
+        credentialOwnerUserId: whatsappCredentialOwnerUserId
       }
     });
   } catch (error) {
@@ -310,3 +340,4 @@ module.exports.getUserCredentialsByUserId = getUserCredentialsByUserId;
 module.exports.updateUserCredentialsByUserId = updateUserCredentialsByUserId;
 module.exports.getTwilioCredentialsByUserId = getTwilioCredentialsByUserId;
 module.exports.getTwilioCredentialsByPhoneNumber = getTwilioCredentialsByPhoneNumber;
+module.exports.buildCredentialSnapshot = buildCredentialSnapshot;
