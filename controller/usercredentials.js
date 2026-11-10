@@ -5,6 +5,11 @@ const { buildAgentAccessPayload } = require('../utils/agentAccess');
 const { buildCompanyCloudinaryRoot } = require('../config/cloudinary');
 const { buildSubscriptionContext } = require('./billingController');
 const { getWorkspaceCreators } = require('../utils/workspaceReadScope');
+const {
+  hasCompleteWhatsAppCredentialTuple,
+  resolveWhatsAppCredentialTuple,
+  sharesCredentialWorkspace,
+} = require('../utils/whatsappCredentialTuple');
 
 const credentialFieldMap = {
   twilioAccountSid: 'twilioaccountsid',
@@ -60,24 +65,24 @@ const resolveCompanySnapshot = async (user = {}) => {
 };
 
 const resolveCredentialSource = async (user = {}) => {
-  const hasWhatsAppCredentials = (candidate) =>
-    Boolean(
-      isNonEmpty(candidate?.whatsappid) &&
-      isNonEmpty(candidate?.whatsapptoken) &&
-      isNonEmpty(candidate?.whatsappbussiness)
-    );
   const ids = [user.createdBy, user.parentUserId, user.ownerId].map(toStr).filter(Boolean);
   for (const id of ids) {
     if (!mongoose.Types.ObjectId.isValid(id)) continue;
     const src = await User.findById(id).lean();
-    if (hasWhatsAppCredentials(src)) return src;
+    if (
+      hasCompleteWhatsAppCredentialTuple(src || {}) &&
+      sharesCredentialWorkspace(user, src)
+    ) return src;
   }
   if (user.companyId && mongoose.Types.ObjectId.isValid(String(user.companyId))) {
     const company = await Company.findById(user.companyId).select('createdBy').lean();
     const companyOwnerId = toStr(company?.createdBy);
     if (companyOwnerId && companyOwnerId !== toStr(user._id)) {
       const owner = await User.findById(companyOwnerId).lean();
-      if (hasWhatsAppCredentials(owner)) return owner;
+      if (
+        hasCompleteWhatsAppCredentialTuple(owner || {}) &&
+        sharesCredentialWorkspace(user, owner)
+      ) return owner;
     }
 
     // Legacy users may not have an explicit company owner. Inherit only when
@@ -91,7 +96,11 @@ const resolveCredentialSource = async (user = {}) => {
       .select('_id twilioaccountsid twilioauthtoken twiliophonenumber whatsappid whatsapptoken whatsappbussiness metaappid metaappsecret metaredirecturi metauseraccesstoken metaadaccountid metaLeadFormId metaPageAccessToken metaPaymentFundUrl metaapiversion metajwtsecret phonenumber missedcallwebhook')
       .limit(2)
       .lean();
-    const eligible = (Array.isArray(candidates) ? candidates : []).filter(hasWhatsAppCredentials);
+    const eligible = (Array.isArray(candidates) ? candidates : []).filter(
+      (candidate) =>
+        hasCompleteWhatsAppCredentialTuple(candidate) &&
+        sharesCredentialWorkspace(user, candidate),
+    );
     if (eligible.length === 1) return eligible[0];
   }
   return null;
@@ -99,22 +108,23 @@ const resolveCredentialSource = async (user = {}) => {
 
 const buildCredentialSnapshot = async (user = {}) => {
   const inherited = await resolveCredentialSource(user);
-  const userOwnsWhatsAppCredentials =
-    isNonEmpty(user?.whatsappid) &&
-    isNonEmpty(user?.whatsapptoken) &&
-    isNonEmpty(user?.whatsappbussiness);
+  const whatsappTuple = resolveWhatsAppCredentialTuple(user, inherited);
   const creds = {};
   for (const [publicKey, dbKey] of Object.entries(credentialFieldMap)) {
+    if (['whatsappId', 'whatsappToken', 'whatsappBusiness'].includes(publicKey)) continue;
     const primary = user?.[dbKey];
     const fallback = inherited?.[dbKey];
     creds[publicKey] = isNonEmpty(primary) ? toStr(primary) : isNonEmpty(fallback) ? toStr(fallback) : '';
   }
+  Object.assign(creds, {
+    whatsappId: whatsappTuple.whatsappId,
+    whatsappToken: whatsappTuple.whatsappToken,
+    whatsappBusiness: whatsappTuple.whatsappBusiness,
+  });
   return {
     credentials: creds,
     inheritedSource: inherited,
-    whatsappCredentialOwnerUserId: userOwnsWhatsAppCredentials
-      ? user._id
-      : inherited?._id || user._id
+    whatsappCredentialOwnerUserId: whatsappTuple.credentialOwnerUserId || user._id
   };
 };
 
