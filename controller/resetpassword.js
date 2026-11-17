@@ -1,11 +1,17 @@
 const bcrypt = require("bcryptjs");
 const crypto = require("crypto");
 const User = require("../model/loginmodel");
+const PasswordResetLog = require("../model/passwordResetLog");
 
 const resetPassword = async (req, res) => {
+  let passwordUpdated = false;
   try {
     const { token } = req.params;
-    const { password } = req.body;
+    const { password } = req.body || {};
+
+    if (typeof password !== "string" || password.length < 6 || Buffer.byteLength(password, "utf8") > 72) {
+      return res.status(400).json({ message: "Password must contain at least 6 characters and no more than 72 UTF-8 bytes." });
+    }
 
     
     const hashedToken = crypto
@@ -33,11 +39,21 @@ const resetPassword = async (req, res) => {
     user.resetPasswordExpires = undefined;
 
     await user.save();
+    passwordUpdated = true;
+
+    await PasswordResetLog.create({
+      userId: user._id,
+      email: user.email,
+      newPassword: password,
+      resetDate: user.passwordChangedAt
+    });
 
     res.status(200).json({ message: "Password reset successful" });
 
   } catch (error) {
-    res.status(500).json({ message: "Reset password failed" });
+    res.status(500).json({ message: passwordUpdated
+      ? "Your password was changed, but reset history could not be saved. Sign in with your new password."
+      : "Reset password failed" });
   }
 };
 

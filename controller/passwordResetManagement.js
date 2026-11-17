@@ -3,6 +3,7 @@ const mongoose = require("mongoose");
 const User = require("../model/loginmodel");
 const Company = require("../model/company");
 const PasswordResetAudit = require("../model/passwordResetAudit");
+const PasswordResetLog = require("../model/passwordResetLog");
 
 const ROOT_SUPERADMIN = {
   id: "superadmin-id",
@@ -248,4 +249,36 @@ const resetAccountPassword = async (req, res) => {
   }
 };
 
-module.exports = { listAccounts, resetAccountPassword };
+const listResetLogs = async (req, res) => {
+  res.set("Cache-Control", "no-store");
+  try {
+    const page = Math.max(1, Math.min(100000, Number.parseInt(req.query?.page, 10) || 1));
+    const pageSize = Math.max(1, Math.min(100, Number.parseInt(req.query?.pageSize, 10) || 25));
+    const total = await PasswordResetLog.countDocuments({});
+    const logs = await PasswordResetLog.find({})
+      .select("userId email resetDate +newPassword")
+      .sort({ resetDate: -1, _id: -1 })
+      .skip((page - 1) * pageSize)
+      .limit(pageSize)
+      .populate({ path: "userId", select: "username email phonenumber" })
+      .lean();
+
+    return res.json({
+      success: true,
+      data: logs.map((log) => ({
+        id: String(log._id),
+        userId: log.userId?._id ? String(log.userId._id) : null,
+        name: log.userId?.username || log.email,
+        email: log.email,
+        phoneNumber: log.userId?.phonenumber || "",
+        newPassword: log.newPassword,
+        resetDate: log.resetDate
+      })),
+      pagination: { page, pageSize, total, totalPages: Math.max(1, Math.ceil(total / pageSize)) }
+    });
+  } catch {
+    return res.status(500).json({ success: false, message: "Failed to load password reset history." });
+  }
+};
+
+module.exports = { listAccounts, resetAccountPassword, listResetLogs };

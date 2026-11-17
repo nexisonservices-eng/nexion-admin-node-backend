@@ -102,6 +102,7 @@ router.get("/api/super-admin/customer-agent/customers/:customerId/agents/:agentI
 router.post("/api/super-admin/customer-agent/customers/:customerId/reset-password", protect, requireSuperAdmin, customerAgentHandling.resetPassword);
 router.post("/api/super-admin/customer-agent/customers/:customerId/agents/:agentId/reset-password", protect, requireSuperAdmin, customerAgentHandling.resetPassword);
 router.get("/api/super-admin/password-reset/accounts", protect, requireSuperAdmin, passwordResetManagement.listAccounts);
+router.get("/api/super-admin/password-reset/logs", protect, requireSuperAdmin, passwordResetManagement.listResetLogs);
 router.put("/api/super-admin/password-reset/accounts/:userId", protect, requireSuperAdmin, passwordResetManagement.resetAccountPassword);
 router.post("/api/admin/users/:userId/custom-package/draft", protect, requireSuperAdmin, billingController.saveCustomPackageDraft);
 router.post("/api/admin/users/:userId/custom-package/payment-link", protect, requireSuperAdmin, billingController.createCustomPackagePaymentLink);
