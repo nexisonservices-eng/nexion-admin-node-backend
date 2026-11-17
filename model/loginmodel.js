@@ -1,6 +1,15 @@
 // models/User.js
 const mongoose = require("mongoose");
 
+const SidebarFeatureFlagsSchema = new mongoose.Schema(
+  {
+    googleAds: {
+      type: Boolean
+    }
+  },
+  { _id: false, strict: false }
+);
+
 const UserSchema = new mongoose.Schema(
   {
     username: {
@@ -13,6 +22,8 @@ const UserSchema = new mongoose.Schema(
     password: {
       type: String,
     },
+    // Selected only for the super-admin customer/agent detail view.
+    agentAssignedPassword: { type: String, select: false },
     passwordChangedAt: { type: Date },
     lastLoginAt: { type: Date },
     mustChangePassword: { type: Boolean, default: false },
@@ -143,7 +154,7 @@ const UserSchema = new mongoose.Schema(
       default: false
     },
     sidebarFeatureFlags: {
-      type: Object,
+      type: SidebarFeatureFlagsSchema,
       default: {}
     },
     isEnabled: {

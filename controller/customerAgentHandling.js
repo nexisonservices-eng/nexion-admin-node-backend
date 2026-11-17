@@ -106,17 +106,22 @@ const getCustomer = async (req, res) => {
 };
 
 const getAgent = async (req, res) => {
+  res.set("Cache-Control", "no-store");
   try {
     const { customerId, agentId } = req.params;
     const customer = await findCustomer(customerId);
     if (!customer) return res.status(404).json({ success: false, message: "Customer not found." });
     if (!mongoose.Types.ObjectId.isValid(agentId)) return res.status(404).json({ success: false, message: "Agent not found." });
     const agent = await User.findOne({ _id: agentId, ...agentOwnerQuery(customer) })
-      .select("_id username email createdBy ownerId parentUserId companyId createdAt lastLoginAt passwordChangedAt isEnabled isActive")
+      .select("_id username email createdBy ownerId parentUserId companyId createdAt lastLoginAt passwordChangedAt isEnabled isActive password +agentAssignedPassword")
       .lean();
     if (!agent) return res.status(404).json({ success: false, message: "Agent not found for this customer." });
     const company = customer.companyId ? await Company.findById(customer.companyId).select("name").lean() : null;
-    return res.json({ success: true, agent: { ...agentSummary(agent), customerId: String(customer._id), customerName: company?.name || customer.username || customer.email || "Customer" } });
+    // Other reset paths may have changed the login password since assignment.
+    const assignedPassword = agent.agentAssignedPassword && agent.password &&
+      await bcrypt.compare(agent.agentAssignedPassword, agent.password)
+      ? agent.agentAssignedPassword : null;
+    return res.json({ success: true, agent: { ...agentSummary(agent), assignedPassword, customerId: String(customer._id), customerName: company?.name || customer.username || customer.email || "Customer" } });
   } catch {
     return res.status(500).json({ success: false, message: "Failed to load agent details." });
   }

@@ -200,6 +200,7 @@ const createAgent = async (req, res) => {
           username,
           email,
           password: hashedPassword,
+          agentAssignedPassword: password,
           passwordChangedAt: new Date(),
           role: "user",
           companyRole,
@@ -275,6 +276,7 @@ const updateAgent = async (req, res) => {
       const nextPassword = normalizeText(payload.password);
       if (nextPassword) {
         agent.password = await bcrypt.hash(nextPassword, 10);
+        agent.agentAssignedPassword = nextPassword;
         agent.passwordChangedAt = new Date();
         agent.mustChangePassword = false;
       }
