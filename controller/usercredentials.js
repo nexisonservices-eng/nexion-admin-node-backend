@@ -128,9 +128,9 @@ const buildCredentialSnapshot = async (user = {}) => {
   };
 };
 
-const formatUserPayload = async (user, billingOverride = null) => {
+const formatUserPayload = async (user, billingOverride = null, credentialSnapshot = null) => {
   const billing = billingOverride || (await buildSubscriptionContext(user));
-  const { credentials } = await buildCredentialSnapshot(user);
+  const { credentials } = credentialSnapshot || (await buildCredentialSnapshot(user));
   const companyRole = resolveCompanyRole(user);
   const workspaceCreators = await getWorkspaceCreators(user, companyRole);
   const companySnapshot = await resolveCompanySnapshot(user);
@@ -206,8 +206,13 @@ const getUserCredentials = async (req, res) => {
       if (!user) return res.status(404).json({ message: 'User not found' });
     }
 
-    const formattedUser = await formatUserPayload(user, user.role === 'superadmin' ? { planCode: 'enterprise', subscriptionStatus: 'active', featureFlags: {} } : null);
-    const { credentials, whatsappCredentialOwnerUserId } = await buildCredentialSnapshot(user);
+    const credentialSnapshot = await buildCredentialSnapshot(user);
+    const formattedUser = await formatUserPayload(
+      user,
+      user.role === 'superadmin' ? { planCode: 'enterprise', subscriptionStatus: 'active', featureFlags: {} } : null,
+      credentialSnapshot
+    );
+    const { credentials, whatsappCredentialOwnerUserId } = credentialSnapshot;
     return res.json({
       success: true,
       data: {
