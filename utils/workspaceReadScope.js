@@ -4,6 +4,10 @@ const User = require('../model/loginmodel');
 const getWorkspaceCreators = async (user, companyRole) => {
   const ownId = String(user._id || '');
   const describe = (account) => ({ id: String(account._id), name: account.username || account.email || '', email: account.email || '', role: account.companyRole || account.role || 'user' });
+  // The delegated super-admin identity is intentionally synthetic
+  // ("superadmin-id"), so it must not be used in ObjectId relationship
+  // queries. Super admins have no stored workspace membership to expand.
+  if (String(user.role || '').toLowerCase() === 'superadmin') return ownId ? [describe(user)] : [];
   if (!ownId || !['admin', 'manager'].includes(String(companyRole || user.role).toLowerCase())) return ownId ? [describe(user)] : [];
   const agents = await User.find({
     ...(user.companyId ? { companyId: user.companyId } : {}),
