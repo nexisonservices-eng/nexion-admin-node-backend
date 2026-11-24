@@ -95,6 +95,7 @@ router.post("/internal/ivr/log", requireInternalApiKey, ivrLogs.recordConversati
 
 router.get("/api/getadmin", protect, requireSuperAdmin, getAdmins);
 router.get("/api/admin/users/roster", protect, requireSuperAdmin, billingController.listUserRoster);
+router.get("/api/admin/google-ads/users", protect, requireSuperAdmin, billingController.listGoogleAdsAssignableUsers);
 router.get("/api/admin/users", protect, requireSuperAdmin, billingController.listUsers);
 router.get("/api/super-admin/customer-agent/customers", protect, requireSuperAdmin, customerAgentHandling.listCustomers);
 router.get("/api/super-admin/customer-agent/customers/:customerId", protect, requireSuperAdmin, customerAgentHandling.getCustomer);

@@ -22,7 +22,8 @@ const SIDEBAR_ACCESS_FLAG_KEYS = [
   "outboundVoice",
   "callAnalytics",
   "missedCall",
-  "workflowAutomation"
+  "workflowAutomation",
+  "googleAds"
 ];
 
 const SIDEBAR_ACCESS_DEFAULTS = SIDEBAR_ACCESS_FLAG_KEYS.reduce((accumulator, key) => {
@@ -45,7 +46,9 @@ const hasSidebarAccessSelection = (flags = {}) =>
   SIDEBAR_ACCESS_FLAG_KEYS.some((key) => Boolean(flags?.[key]));
 
 const collapseSidebarFeatureFlags = (flags = {}) =>
-  hasSidebarAccessSelection(flags) ? normalizeSidebarFeatureFlags(flags) : {};
+  Object.prototype.hasOwnProperty.call(flags || {}, "googleAds") || hasSidebarAccessSelection(flags)
+    ? normalizeSidebarFeatureFlags(flags)
+    : {};
 
 const SIDEBAR_ACCESS_GROUPS = [
   {

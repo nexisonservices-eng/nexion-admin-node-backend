@@ -787,6 +787,35 @@ const listUserRoster = async (req, res) => {
   }
 };
 
+const listGoogleAdsAssignableUsers = async (_req, res) => {
+  try {
+    const users = await User.find({ role: { $ne: "superadmin" } })
+      .select("_id username email role companyRole companyId isActive sidebarFeatureFlags")
+      .sort({ createdAt: -1 })
+      .lean();
+    const eligibleUsers = users.filter((user) => user.sidebarFeatureFlags?.googleAds === true
+      && String(user.role || "").toLowerCase() !== "superadmin"
+      && user.isActive !== false);
+    const companyIds = Array.from(new Set(eligibleUsers.map((user) => String(user.companyId || "")).filter(Boolean)));
+    const companies = await Company.find({ _id: { $in: companyIds } }).select("_id name").lean();
+    const companyById = new Map(companies.map((company) => [String(company._id), company.name || ""]));
+    const data = eligibleUsers
+      .map((user) => ({
+        userId: String(user._id),
+        username: user.username || "",
+        email: user.email || "",
+        role: user.role || "user",
+        sidebarFeatureFlags: user.sidebarFeatureFlags,
+        companyRole: resolveCompanyRole(user),
+        ...(user.companyId ? { companyId: String(user.companyId) } : {}),
+        ...(companyById.has(String(user.companyId || "")) ? { companyName: companyById.get(String(user.companyId)) } : {})
+      }));
+    return res.json({ success: true, data });
+  } catch (_error) {
+    return res.status(500).json({ success: false, message: "Failed to fetch Google Ads assignment users." });
+  }
+};
+
 const updateSubscriptionDates = async (req, res) => {
   const { startsAt, endsAt } = req.body || {};
   if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
@@ -1157,6 +1186,7 @@ module.exports = {
   updateSubscriptionDates,
   listUsers,
   listUserRoster,
+  listGoogleAdsAssignableUsers,
   saveCustomPackageDraft,
   createCustomPackagePaymentLink,
   verifyCustomPackagePayment,
